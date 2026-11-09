@@ -38,7 +38,7 @@ Export Zotero items, child notes, and PDF annotations to Joplin. Generated notes
 ## Build
 
 ```bash
-npm install
+npm install --include=dev
 npm run build
 # .scaffold/build/zotero-to-joplin.xpi
 ```

@@ -38,7 +38,7 @@
 ## 构建
 
 ```bash
-npm install
+npm install --include=dev
 npm run build
 # .scaffold/build/zotero-to-joplin.xpi
 ```
