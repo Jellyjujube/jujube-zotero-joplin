@@ -1,0 +1,102 @@
+<linkset>
+  <html:link rel="localization" href="__addonRef__-preferences.ftl" />
+</linkset>
+<groupbox
+  onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
+>
+  <label><html:h2 data-l10n-id="pref-title"></html:h2></label>
+
+  <vbox>
+    <html:label for="zotero-prefpane-__addonRef__-joplinBaseUrl"
+      >Joplin API 地址</html:label
+    >
+    <html:input
+      type="text"
+      id="zotero-prefpane-__addonRef__-joplinBaseUrl"
+      preference="joplinBaseUrl"
+      style="width: 32em;"
+    ></html:input>
+    <html:label style="color: gray;"
+      >默认 http://127.0.0.1:41184，端口以 Joplin Web Clipper 设置为准。</html:label
+    >
+  </vbox>
+
+  <vbox>
+    <html:label for="zotero-prefpane-__addonRef__-joplinToken"
+      >Joplin Token</html:label
+    >
+    <html:input
+      type="password"
+      id="zotero-prefpane-__addonRef__-joplinToken"
+      preference="joplinToken"
+      style="width: 32em;"
+    ></html:input>
+    <html:label style="color: gray;"
+      >在 Joplin 设置 → Web Clipper 中启用服务并复制授权 Token。</html:label
+    >
+  </vbox>
+
+  <vbox>
+    <html:label for="zotero-prefpane-__addonRef__-notebookName"
+      >目标笔记本</html:label
+    >
+    <hbox align="center">
+      <html:input
+        type="text"
+        id="zotero-prefpane-__addonRef__-notebookName"
+        preference="notebookName"
+        style="width: 24em;"
+      ></html:input>
+      <html:button id="zotero-prefpane-__addonRef__-chooseNotebook"
+        >选择 / 新建…</html:button
+      >
+    </hbox>
+    <html:label
+      id="zotero-prefpane-__addonRef__-notebookStatus"
+      style="color: gray;"
+    ></html:label>
+    <html:label style="color: gray;"
+      >默认 Zotero。可点“选择 / 新建…”从现有笔记本中选择，或直接输入新名称（支持 A/B 多级路径，不存在会自动创建）。留空则放在顶层。</html:label
+    >
+  </vbox>
+
+  <vbox>
+    <checkbox
+      id="zotero-prefpane-__addonRef__-includeImages"
+      preference="includeImages"
+      label="包含图片/手写注释（上传为 Joplin 资源）"
+    />
+    <checkbox
+      id="zotero-prefpane-__addonRef__-includeAbstract"
+      preference="includeAbstract"
+      label="文献信息中包含摘要"
+    />
+    <checkbox
+      id="zotero-prefpane-__addonRef__-includeTags"
+      preference="includeTags"
+      label="把 Zotero 标签同步为 Joplin 标签"
+    />
+  </vbox>
+
+  <groupbox>
+    <html:label style="color: gray;"
+      >使用方法：在 Zotero 条目列表右键 → “导出到 Joplin” → 一起导出 / 单独导出笔记 / 单独导出注释。</html:label
+    >
+  </groupbox>
+
+  <hbox align="center">
+    <html:button id="zotero-prefpane-__addonRef__-testConnection"
+      >测试 Joplin 连接</html:button
+    >
+    <html:label
+      id="zotero-prefpane-__addonRef__-connectionStatus"
+      style="margin-left: 1em;"
+    ></html:label>
+  </hbox>
+</groupbox>
+<vbox>
+  <html:label
+    data-l10n-id="pref-help"
+    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
+  ></html:label>
+</vbox>

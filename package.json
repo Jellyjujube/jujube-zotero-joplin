@@ -1,0 +1,65 @@
+{
+  "name": "zotero-joplin",
+  "type": "module",
+  "version": "1.0.1",
+  "description": "Sync Zotero child notes and PDF annotations to Joplin",
+  "config": {
+    "addonName": "Zotero to Joplin",
+    "addonID": "zotero-joplin@local",
+    "addonRef": "zoterojoplin",
+    "addonInstance": "ZoteroJoplin",
+    "prefsPrefix": "extensions.zotero.zoterojoplin"
+  },
+  "author": "Zotero to Joplin contributors",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "lint:check": "prettier --check . && eslint .",
+    "lint:fix": "prettier --write . && eslint . --fix",
+    "release": "zotero-plugin release",
+    "test:unit": "tsx scripts/render-sample.ts && tsx scripts/test-joplin-client.ts && tsx scripts/test-sync-utils.ts",
+    "update-deps": "npm update --save"
+  },
+  "dependencies": {
+    "zotero-plugin-toolkit": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@zotero-plugin/eslint-config": "^0.6.10",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "zotero-plugin-scaffold": "^0.9.3",
+    "zotero-types": "^4.1.3"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "tabWidth": 2,
+    "endOfLine": "lf",
+    "overrides": [
+      {
+        "files": [
+          "*.xhtml"
+        ],
+        "options": {
+          "htmlWhitespaceSensitivity": "css"
+        }
+      }
+    ]
+  },
+  "overrides": {
+    "typescript-eslint": {
+      "typescript": "6.0.3"
+    }
+  },
+  "homepage": "https://github.com/Jellyjujube/jujube-zotero-joplin",
+  "bugs": {
+    "url": "https://github.com/Jellyjujube/jujube-zotero-joplin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jellyjujube/jujube-zotero-joplin.git"
+  }
+}
