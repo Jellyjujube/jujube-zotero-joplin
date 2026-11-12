@@ -26,18 +26,24 @@ import {
   makeUserData,
   paperKey,
   parseUserData,
+  parseUserDataTags,
 } from "./noteIdentity";
 
 const MANAGED_BLOCK_RE =
   /<!-- zotero-joplin:begin[\s\S]*?<!-- zotero-joplin:end -->/;
 
 export function getSettings(): PluginSettings {
+  const mode = String(getPref("exportLocationMode") || "default");
+  const source = String(getPref("defaultLocationSource") || "fixed");
   return {
     joplinBaseUrl:
       String(getPref("joplinBaseUrl") || "").trim() ||
       "http://127.0.0.1:41184",
     joplinToken: String(getPref("joplinToken") || "").trim(),
     notebookName: String(getPref("notebookName") || "").trim(),
+    exportLocationMode: mode === "ask" ? "ask" : "default",
+    defaultLocationSource:
+      source === "collections" ? "collections" : "fixed",
     includeImages: Boolean(getPref("includeImages")),
     includeAbstract: Boolean(getPref("includeAbstract")),
     includeTags: Boolean(getPref("includeTags")),
@@ -297,13 +303,21 @@ async function buildUserDataIndex(
   return index;
 }
 
+function uniqueTags(tags: string[]): string[] {
+  return [
+    ...new Set(
+      tags.map((tag) => String(tag || "").trim()).filter(Boolean),
+    ),
+  ];
+}
+
 async function applyTags(
   client: JoplinClient,
   noteId: string,
   tags: string[],
   cache: Map<string, string | undefined>,
 ): Promise<void> {
-  for (const tag of tags) {
+  for (const tag of uniqueTags(tags)) {
     let tagId = cache.get(tag);
     if (tagId === undefined) {
       tagId = await client.ensureTag(tag);
@@ -312,6 +326,37 @@ async function applyTags(
     if (tagId) {
       await client.addTagToNote(tagId, noteId);
     }
+  }
+}
+
+/**
+ * Add the current Zotero tags and remove only tags that this plugin synced
+ * earlier. Tags added manually in Joplin are left untouched.
+ */
+async function syncNoteTags(
+  client: JoplinClient,
+  noteId: string,
+  desiredTags: string[],
+  trackedTags: string[],
+  cache: Map<string, string | undefined>,
+): Promise<void> {
+  const desired = uniqueTags(desiredTags);
+  const tracked = new Set(uniqueTags(trackedTags));
+
+  await applyTags(client, noteId, desired, cache);
+  if (!tracked.size) return;
+
+  let currentTags: Array<{ id: string; title: string }> = [];
+  try {
+    currentTags = await client.listNoteTags(noteId);
+  } catch {
+    return;
+  }
+
+  const desiredSet = new Set(desired);
+  for (const tag of currentTags) {
+    if (!tracked.has(tag.title) || desiredSet.has(tag.title)) continue;
+    await client.removeTagFromNote(tag.id, noteId);
   }
 }
 
@@ -325,6 +370,7 @@ export interface SyncProgress {
  */
 export async function syncZoteroItemsAsDocument(
   items: Zotero.Item[],
+  targetFolderId: string,
   onProgress?: SyncProgress,
 ): Promise<SyncSummary> {
   const settings = getSettings();
@@ -338,7 +384,6 @@ export async function syncZoteroItemsAsDocument(
   onProgress?.("正在连接 Joplin...", 0);
   await client.ping();
 
-  const notebookId = await client.ensureNotebookPath(settings.notebookName);
   onProgress?.("正在读取已有 Joplin 笔记...", 1);
   const userDataIndex = await buildUserDataIndex(client);
 
@@ -403,6 +448,16 @@ export async function syncZoteroItemsAsDocument(
         noteId = await generateNoteId(data);
       }
 
+      const previousTags = parseUserDataTags(
+        String(existingNote?.user_data || ""),
+      );
+      const desiredTags = settings.includeTags
+        ? uniqueTags(data.tags)
+        : [];
+      // Track every tag ever seen in Zotero. This lets the next export remove
+      // a tag even if tag syncing was turned off in between.
+      const trackedTags = uniqueTags([...previousTags, ...data.tags]);
+
       let markdown = formatDocumentNote(data, settings);
       markdown = await uploadAnnotationImages(
         client,
@@ -417,8 +472,8 @@ export async function syncZoteroItemsAsDocument(
           id: noteId,
           title: data.title || "Untitled",
           body: markdown,
-          parent_id: notebookId,
-          user_data: makeUserData(data),
+          parent_id: targetFolderId,
+          user_data: makeUserData(data, trackedTags),
         },
         existingNote,
       );
@@ -432,8 +487,14 @@ export async function syncZoteroItemsAsDocument(
         userDataIndex.set(mapKey, noteId);
       }
 
-      if (ok && settings.includeTags && data.tags.length) {
-        await applyTags(client, noteId, data.tags, tagCache);
+      if (ok) {
+        await syncNoteTags(
+          client,
+          noteId,
+          desiredTags,
+          trackedTags,
+          tagCache,
+        );
       }
     } catch (error) {
       summary.failed++;

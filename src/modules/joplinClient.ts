@@ -112,9 +112,42 @@ function normalizeBaseUrl(url: string): string {
   return base.replace(/\/+$/, "");
 }
 
+interface FolderRecord {
+  id: string;
+  title: string;
+  parent_id: string;
+  user_data: string;
+}
+
+function collectionUserData(libraryID: number, key: string): string {
+  return JSON.stringify({
+    "zotero-joplin-collection": { libraryID, key },
+  });
+}
+
+function parseCollectionUserData(
+  value: string,
+): { libraryID: number; key: string } | null {
+  try {
+    const parsed = JSON.parse(String(value || ""));
+    const data = parsed?.["zotero-joplin-collection"];
+    if (data && data.libraryID !== undefined && data.key) {
+      return {
+        libraryID: Number(data.libraryID),
+        key: String(data.key),
+      };
+    }
+  } catch {
+    // Not a collection folder.
+  }
+  return null;
+}
+
 export class JoplinClient {
   private baseUrl: string;
   private token: string;
+  private folderRecords: FolderRecord[] | null = null;
+  private collectionFolderIndex: Map<string, FolderRecord> | null = null;
 
   constructor(settings: PluginSettings) {
     this.baseUrl = normalizeBaseUrl(settings.joplinBaseUrl);
@@ -279,6 +312,7 @@ export class JoplinClient {
     id?: string;
     title: string;
     parent_id?: string;
+    user_data?: string;
   }): Promise<any> {
     const result = await this.request("POST", "/folders", {
       body: folder,
@@ -288,7 +322,11 @@ export class JoplinClient {
 
   async updateFolder(
     folderId: string,
-    fields: { title?: string; parent_id?: string },
+    fields: {
+      title?: string;
+      parent_id?: string;
+      user_data?: string;
+    },
   ): Promise<any> {
     const result = await this.request("PUT", `/folders/${folderId}`, {
       body: fields,
@@ -302,6 +340,26 @@ export class JoplinClient {
   ): Promise<any | null> {
     const trimmed = String(title || "").trim();
     if (!trimmed) return null;
+    const wantParent = String(parentId ?? "");
+
+    // Prefer the full folder list over /search: exact matching is reliable
+    // even for titles containing "/" or wildcard characters.
+    try {
+      const records = await this.getFolderRecords();
+      const match = records.find(
+        (record) =>
+          record.title === trimmed && record.parent_id === wantParent,
+      );
+      if (match) {
+        return {
+          id: match.id,
+          title: match.title,
+          parent_id: match.parent_id,
+        };
+      }
+    } catch {
+      // Fall back to /search below.
+    }
 
     const result = await this.request("GET", "/search", {
       query: {
@@ -317,7 +375,7 @@ export class JoplinClient {
       items.find(
         (item) =>
           item.title === trimmed &&
-          (!parentId || item.parent_id === parentId),
+          String(item.parent_id || "") === wantParent,
       ) || null
     );
   }
@@ -326,32 +384,41 @@ export class JoplinClient {
    * List all notebooks with full paths, e.g. "Zotero/Papers".
    */
   async listNotebooks(): Promise<
-    Array<{ id: string; title: string; path: string }>
+    Array<{ id: string; title: string; path: string; parentId: string }>
   > {
-    const result = await this.request("GET", "/folders");
-    const roots: any[] = Array.isArray(result.data?.items)
-      ? result.data.items
-      : [];
+    const result = await this.request("GET", "/folders", {
+      query: { as_tree: 1 },
+    });
+    const roots: any[] = Array.isArray(result.data)
+      ? result.data
+      : Array.isArray(result.data?.items)
+        ? result.data.items
+        : [];
 
-    const out: Array<{ id: string; title: string; path: string }> = [];
+    const out: Array<{
+      id: string;
+      title: string;
+      path: string;
+      parentId: string;
+    }> = [];
     const seen = new Set<string>();
 
-    const add = (node: any, prefix: string) => {
+    const add = (node: any, prefix: string, parentId: string) => {
       const id = String(node?.id || "");
       if (!id || seen.has(id)) return;
       seen.add(id);
       const title = String(node?.title || "");
       const path = prefix ? `${prefix}/${title}` : title;
-      out.push({ id, title, path });
+      out.push({ id, title, path, parentId });
       if (Array.isArray(node?.children)) {
         for (const child of node.children) {
-          add(child, path);
+          add(child, path, id);
         }
       }
     };
 
     for (const node of roots) {
-      add(node, "");
+      add(node, "", "");
     }
 
     // If the API returned a flat list without `children`, build paths from
@@ -385,8 +452,14 @@ export class JoplinClient {
         const existing = out.find((entry) => entry.id === id);
         if (existing) {
           existing.path = path;
+          existing.parentId = String(node.parent_id || "");
         } else {
-          out.push({ id, title: String(node.title || ""), path });
+          out.push({
+            id,
+            title: String(node.title || ""),
+            path,
+            parentId: String(node.parent_id || ""),
+          });
         }
       }
     }
@@ -395,9 +468,222 @@ export class JoplinClient {
   }
 
   /**
-   * Ensure a notebook path exists, creating missing levels.
-   * "Zotero/Papers" creates Zotero, then Papers inside it.
+   * Return the Zotero root notebook and all of its descendants.
    */
+  async listNotebooksUnderRoot(rootTitle = "Zotero"): Promise<{
+    rootId: string;
+    items: Array<{
+      id: string;
+      title: string;
+      path: string;
+      parentId: string;
+    }>;
+  }> {
+    const all = await this.listNotebooks();
+    const root = all.find(
+      (entry) => entry.title === rootTitle && !entry.parentId,
+    );
+    if (!root) return { rootId: "", items: [] };
+
+    const children = new Map<string, typeof all>();
+    for (const entry of all) {
+      if (!entry.parentId) continue;
+      const list = children.get(entry.parentId) || [];
+      list.push(entry);
+      children.set(entry.parentId, list);
+    }
+
+    const items: typeof all = [];
+    const walk = (entry: (typeof all)[number], path: string) => {
+      items.push({ ...entry, path });
+      for (const child of children.get(entry.id) || []) {
+        walk(child, `${path}/${child.title}`);
+      }
+    };
+    walk(root, root.title);
+
+    return { rootId: root.id, items };
+  }
+
+  /**
+   * Ensure a chain of folders exists, using parent IDs rather than a
+   * slash-separated path. This handles collection names containing "/".
+   */
+  private async getFolderRecords(): Promise<FolderRecord[]> {
+    if (this.folderRecords) return this.folderRecords;
+
+    const result = await this.request("GET", "/folders");
+    const roots: any[] = Array.isArray(result.data)
+      ? result.data
+      : Array.isArray(result.data?.items)
+        ? result.data.items
+        : [];
+
+    const records: FolderRecord[] = [];
+    const seen = new Set<string>();
+    const walk = (nodes: any[], parentId: string) => {
+      for (const node of nodes) {
+        const id = String(node?.id || "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+
+        const parent = String(node?.parent_id || parentId || "");
+        records.push({
+          id,
+          title: String(node?.title || ""),
+          parent_id: parent,
+          user_data: String(node?.user_data || ""),
+        });
+
+        if (Array.isArray(node?.children)) {
+          walk(node.children, id);
+        }
+      }
+    };
+    walk(roots, "");
+
+    this.folderRecords = records;
+    return records;
+  }
+
+  private async getCollectionFolderIndex(): Promise<
+    Map<string, FolderRecord>
+  > {
+    if (this.collectionFolderIndex) return this.collectionFolderIndex;
+
+    const index = new Map<string, FolderRecord>();
+    for (const record of await this.getFolderRecords()) {
+      const parsed = parseCollectionUserData(record.user_data);
+      if (parsed) {
+        index.set(`${parsed.libraryID}:${parsed.key}`, record);
+      }
+    }
+
+    this.collectionFolderIndex = index;
+    return index;
+  }
+
+  /**
+   * Find or create the Joplin folder for a Zotero collection, keyed by
+   * libraryID + collection key in Joplin folder user_data. Renames and moves
+   * update the existing folder instead of creating a duplicate.
+   */
+  async ensureCollectionFolder(
+    parentId: string,
+    libraryID: number,
+    key: string,
+    title: string,
+  ): Promise<string> {
+    const index = await this.getCollectionFolderIndex();
+    const mapKey = `${libraryID}:${key}`;
+    let record = index.get(mapKey);
+
+    if (!record) {
+      // Migration path for folders created before collection user_data existed.
+      const byTitle = await this.findFolderByTitle(title, parentId);
+      if (byTitle) {
+        const userData = collectionUserData(libraryID, key);
+        try {
+          await this.updateFolder(String(byTitle.id), {
+            title,
+            parent_id: parentId,
+            user_data: userData,
+          });
+        } catch {
+          // Older Joplin versions may reject user_data on PUT; the folder is
+          // still usable via the title/parent fallback.
+          await this.updateFolder(String(byTitle.id), {
+            title,
+            parent_id: parentId,
+          });
+        }
+        record = {
+          id: String(byTitle.id),
+          title,
+          parent_id: parentId,
+          user_data: userData,
+        };
+      } else {
+        let created: any;
+        const userData = collectionUserData(libraryID, key);
+        try {
+          created = await this.createFolder({
+            title,
+            parent_id: parentId,
+            user_data: userData,
+          });
+        } catch {
+          created = await this.createFolder({
+            title,
+            parent_id: parentId,
+          });
+        }
+        if (!created?.id) {
+          throw new Error(`无法创建 Joplin 笔记本：${title}`);
+        }
+        record = {
+          id: String(created.id),
+          title,
+          parent_id: parentId,
+          user_data: userData,
+        };
+      }
+
+      index.set(mapKey, record);
+      this.folderRecords?.push(record);
+      return record.id;
+    }
+
+    const updates: { title?: string; parent_id?: string } = {};
+    if (record.title !== title) updates.title = title;
+    if (record.parent_id !== parentId) updates.parent_id = parentId;
+
+    if (updates.title !== undefined || updates.parent_id !== undefined) {
+      await this.updateFolder(record.id, updates);
+      record.title = title;
+      record.parent_id = parentId;
+    }
+
+    return record.id;
+  }
+
+  async ensureFolderChain(titles: string[]): Promise<string> {
+    if (!titles.length) {
+      throw new Error("No Joplin folder path provided");
+    }
+
+    let parentId: string | undefined;
+    for (const rawTitle of titles) {
+      const title = String(rawTitle || "").trim();
+      if (!title) continue;
+
+      let folder = await this.findFolderByTitle(title, parentId);
+      if (!folder) {
+        folder = await this.createFolder({
+          title,
+          parent_id: parentId,
+        });
+        if (folder?.id && this.folderRecords) {
+          this.folderRecords.push({
+            id: String(folder.id),
+            title,
+            parent_id: String(parentId || ""),
+            user_data: "",
+          });
+        }
+      }
+      if (!folder?.id) {
+        throw new Error(`无法创建 Joplin 笔记本：${title}`);
+      }
+      parentId = String(folder.id);
+    }
+
+    if (!parentId) {
+      throw new Error("No Joplin folder path provided");
+    }
+    return parentId;
+  }
+
   async ensureNotebookPath(
     path: string,
   ): Promise<string | undefined> {
@@ -406,22 +692,7 @@ export class JoplinClient {
       .map((segment) => segment.trim())
       .filter(Boolean);
     if (!segments.length) return undefined;
-
-    let parentId: string | undefined;
-    for (const title of segments) {
-      let folder = await this.findFolderByTitle(title, parentId);
-      if (!folder) {
-        folder = await this.createFolder({
-          title,
-          parent_id: parentId,
-        });
-      }
-      if (!folder?.id) {
-        throw new Error(`无法创建 Joplin 笔记本：${title}`);
-      }
-      parentId = String(folder.id);
-    }
-    return parentId;
+    return this.ensureFolderChain(segments);
   }
 
   async ensureNotebook(name: string): Promise<string | undefined> {
@@ -501,6 +772,41 @@ export class JoplinClient {
     } catch {
       // The tag may already be attached, or the note may be temporarily
       // unavailable. Tagging is non-critical, so don't fail the sync.
+    }
+  }
+
+  async listNoteTags(
+    noteId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    const out: Array<{ id: string; title: string }> = [];
+    let page = 1;
+    for (;;) {
+      const result = await this.request("GET", `/notes/${noteId}/tags`, {
+        query: { fields: "id,title", page, limit: 100 },
+      });
+      const items: any[] = Array.isArray(result.data?.items)
+        ? result.data.items
+        : [];
+      for (const item of items) {
+        const id = String(item?.id || "");
+        if (!id) continue;
+        out.push({ id, title: String(item?.title || "") });
+      }
+      if (!result.data?.has_more || !items.length) break;
+      page++;
+    }
+    return out;
+  }
+
+  async removeTagFromNote(tagId: string, noteId: string): Promise<void> {
+    try {
+      await this.request(
+        "DELETE",
+        `/tags/${tagId}/notes/${noteId}`,
+        { responseType: "text" },
+      );
+    } catch {
+      // Tag removal is non-critical; leave the old tag if the API rejects it.
     }
   }
 

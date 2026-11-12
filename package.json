@@ -1,7 +1,7 @@
 {
   "name": "zotero-joplin",
   "type": "module",
-  "version": "1.0.1",
+  "version": "1.1.13",
   "description": "Sync Zotero child notes and PDF annotations to Joplin",
   "config": {
     "addonName": "Zotero to Joplin",
@@ -54,12 +54,12 @@
       "typescript": "6.0.3"
     }
   },
-  "homepage": "https://github.com/Jellyjujube/jujube-zotero-joplin",
-  "bugs": {
-    "url": "https://github.com/Jellyjujube/jujube-zotero-joplin/issues"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Jellyjujube/jujube-zotero-joplin.git"
+  },
+  "homepage": "https://github.com/Jellyjujube/jujube-zotero-joplin",
+  "bugs": {
+    "url": "https://github.com/Jellyjujube/jujube-zotero-joplin/issues"
   }
 }

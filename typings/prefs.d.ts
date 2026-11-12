@@ -10,6 +10,9 @@ declare namespace _ZoteroTypes {
       "joplinBaseUrl": string;
       "joplinToken": string;
       "notebookName": string;
+      "exportLocationMode": string;
+      "defaultLocationSource": string;
+      "lastTargetFolderId": string;
       "includeImages": boolean;
       "includeAbstract": boolean;
       "includeTags": boolean;

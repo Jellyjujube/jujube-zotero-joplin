@@ -8,13 +8,6 @@ export default defineConfig({
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
 
-  // Auto-update endpoints. Explicit so a scaffold default change cannot
-  // silently repoint them.
-  updateURL:
-    "https://github.com/{{owner}}/{{repo}}/releases/download/release/{{updateJson}}",
-  xpiDownloadLink:
-    "https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi",
-
   build: {
     assets: ["addon/**/*.*"],
     define: {

@@ -6,10 +6,16 @@ import {
 } from "../src/modules/sync";
 import { ItemData } from "../src/modules/types";
 import {
+  normalizeFixedSegments,
+  resolveDefaultTarget,
+  ROOT_NOTEBOOK,
+} from "../src/modules/target";
+import {
   generateNoteId,
   makeUserData,
   paperKey,
   parseUserData,
+  parseUserDataTags,
 } from "../src/modules/noteIdentity";
 
 const data = {
@@ -39,6 +45,41 @@ if (parseUserData(userData) !== "1:ABCD1234") {
 }
 if (parseUserData("{}") !== null) {
   throw new Error("foreign user_data should be ignored");
+}
+const taggedUserData = makeUserData(data, [
+  " important ",
+  "to-read",
+  "important",
+  "",
+]);
+if (parseUserDataTags(taggedUserData).join(",") !== "important,to-read") {
+  throw new Error("user_data tag round-trip failed");
+}
+if (parseUserDataTags("{}").length !== 0) {
+  throw new Error("foreign user_data tags should be empty");
+}
+
+const pathCases: Array<[string, string]> = [
+  ["", "Zotero"],
+  ["Papers", "Zotero/Papers"],
+  ["Zotero/Papers", "Zotero/Papers"],
+  ["/Zotero/Papers", "Zotero/Papers"],
+  ["Other/Papers", "Zotero/Other/Papers"],
+];
+for (const [input, expected] of pathCases) {
+  const actual = normalizeFixedSegments(input).join("/");
+  if (actual !== expected) {
+    throw new Error(`normalizeFixedSegments(${input}) = ${actual}, expected ${expected}`);
+  }
+}
+if (ROOT_NOTEBOOK !== "Zotero") throw new Error("root notebook mismatch");
+
+const fixedTarget = resolveDefaultTarget({
+  defaultLocationSource: "fixed",
+  notebookName: "",
+} as any);
+if (fixedTarget.segments.join("/") !== ROOT_NOTEBOOK) {
+  throw new Error("empty default notebook should resolve to Zotero root");
 }
 
 const markerBody =

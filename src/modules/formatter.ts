@@ -59,12 +59,82 @@ function inlineCode(value: string): string {
   return `\`${String(value).replace(/`/g, "'")}\``;
 }
 
-function demoteHeadings(markdown: string, levels: number): string {
-  return String(markdown || "").replace(
-    /^(#{1,6})\s/gm,
-    (_match, hashes: string) =>
-      `${"#".repeat(Math.min(6, hashes.length + levels))} `,
-  );
+interface MarkdownHeading {
+  lineIndex: number;
+  indent: string;
+  level: number;
+}
+
+const NOTE_CONTENT_HEADING_LEVEL = 4;
+
+/**
+ * Find ATX headings outside fenced code blocks.
+ */
+function scanMarkdownHeadings(lines: string[]): MarkdownHeading[] {
+  const headings: MarkdownHeading[] = [];
+  let fenceChar = "";
+  let fenceLength = 0;
+
+  lines.forEach((line, lineIndex) => {
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      const marker = fence[1];
+      const char = marker[0];
+      if (!fenceChar) {
+        fenceChar = char;
+        fenceLength = marker.length;
+      } else if (
+        char === fenceChar &&
+        marker.length >= fenceLength &&
+        !fence[2].trim()
+      ) {
+        fenceChar = "";
+        fenceLength = 0;
+      }
+      return;
+    }
+    if (fenceChar) return;
+
+    const heading = line.match(/^( {0,3})(#{1,6})(?=\s|$)/);
+    if (heading) {
+      headings.push({
+        lineIndex,
+        indent: heading[1],
+        level: heading[2].length,
+      });
+    }
+  });
+
+  return headings;
+}
+
+/**
+ * Re-level the headings inside a Zotero note so they become children of the
+ * note's own heading (`### [note title]`). The shallowest heading is moved to
+ * `startLevel`; deeper headings keep their relative order. Headings inside
+ * fenced code blocks are left untouched.
+ */
+function nestNoteHeadings(markdown: string, startLevel = NOTE_CONTENT_HEADING_LEVEL): string {
+  const source = String(markdown || "");
+  const lines = source.split(/\r?\n/);
+  const headings = scanMarkdownHeadings(lines);
+  if (!headings.length) return source;
+
+  let minLevel = 6;
+  for (const heading of headings) {
+    if (heading.level < minLevel) minLevel = heading.level;
+  }
+  const shift = startLevel - minLevel;
+
+  for (const heading of headings) {
+    const level = Math.max(1, Math.min(6, heading.level + shift));
+    const line = lines[heading.lineIndex];
+    const prefixLength = heading.indent.length + heading.level;
+    lines[heading.lineIndex] =
+      `${heading.indent}${"#".repeat(level)}${line.slice(prefixLength)}`;
+  }
+
+  return lines.join("\n");
 }
 
 function annotationLink(
@@ -81,17 +151,12 @@ function renderAnnotation(
   settings: PluginSettings,
 ): string[] {
   const lines: string[] = [];
-  const page = annotation.pageLabel
-    ? `p. ${annotation.pageLabel}`
-    : annotation.pageIndex >= 0
-      ? `p. ${annotation.pageIndex + 1}`
-      : "未知页";
-  const parts = [page, typeName(annotation.type), colorName(annotation.color)]
+  const parts = [typeName(annotation.type), colorName(annotation.color)]
     .filter(Boolean)
     .join(" · ");
   const link = annotationLink(attachment, annotation);
 
-  lines.push(`#### [${parts}](${link})`);
+  lines.push(`**[${parts}](${link})**`);
   lines.push("");
 
   if (annotation.type === "image" || annotation.type === "ink") {
@@ -120,6 +185,18 @@ function renderAnnotation(
   return lines;
 }
 
+function annotationPageLabel(annotation: AnnotationData): string {
+  if (annotation.pageLabel) return `p. ${annotation.pageLabel}`;
+  if (annotation.pageIndex >= 0) return `p. ${annotation.pageIndex + 1}`;
+  return "未知页";
+}
+
+function annotationPageKey(annotation: AnnotationData): string {
+  if (annotation.pageIndex >= 0) return `index:${annotation.pageIndex}`;
+  if (annotation.pageLabel) return `label:${annotation.pageLabel}`;
+  return "unknown";
+}
+
 function renderAttachment(
   attachment: AttachmentData,
   settings: PluginSettings,
@@ -130,7 +207,15 @@ function renderAttachment(
   lines.push(`### [${escapeLinkText(title)}](${attachment.uri})`);
   lines.push("");
 
+  let currentPage = "";
   for (const annotation of attachment.annotations) {
+    const pageKey = annotationPageKey(annotation);
+    if (pageKey !== currentPage) {
+      if (currentPage) lines.push("");
+      lines.push(`#### ${annotationPageLabel(annotation)}`);
+      lines.push("");
+      currentPage = pageKey;
+    }
     lines.push(...renderAnnotation(attachment, annotation, settings));
   }
   return lines;
@@ -192,7 +277,7 @@ function renderNotesSection(data: ItemData): string[] {
   const lines: string[] = ["## Zotero 笔记", ""];
 
   for (const note of data.notes) {
-    const markdown = demoteHeadings(note.markdown, 2);
+    const markdown = nestNoteHeadings(note.markdown);
     if (!markdown) continue;
     lines.push(`### [${escapeLinkText(note.title || "笔记")}](${note.uri})`);
     lines.push("");

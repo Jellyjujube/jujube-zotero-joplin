@@ -17,7 +17,3 @@ logs
 
 # release artifacts
 release
-
-# build output (XPI ships as a GitHub Release asset only)
-dist/
-*.xpi

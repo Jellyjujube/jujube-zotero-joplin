@@ -1,9 +1,17 @@
 import { config } from "../package.json";
 import { getLocaleID, getString, initLocale } from "./utils/locale";
 import { registerPrefsScripts } from "./modules/preferenceScript";
-import { syncZoteroItemsAsDocument } from "./modules/sync";
+import { getSettings, syncZoteroItemsAsDocument } from "./modules/sync";
+import { JoplinClient } from "./modules/joplinClient";
+import { pickNotebook } from "./modules/notebookPicker";
+import {
+  ROOT_NOTEBOOK,
+  ensureTarget,
+  normalizeFixedSegments,
+  resolveDefaultTarget,
+} from "./modules/target";
 import { appendDebugLog } from "./utils/debugLog";
-import { clearPref } from "./utils/prefs";
+import { clearPref, getPref, setPref } from "./utils/prefs";
 import { createZToolkit } from "./utils/ztoolkit";
 
 const MENU_ID = `${config.addonRef}-itemmenu-sync-to-joplin`;
@@ -24,6 +32,16 @@ async function onStartup(): Promise<void> {
     try {
       clearPref("noteMap");
       clearPref("exportStructure");
+    } catch {
+      // Ignore.
+    }
+
+    // The Zotero root is represented by an empty value so the settings input
+    // can show it as the default placeholder.
+    try {
+      if (String(getPref("notebookName") || "").trim() === ROOT_NOTEBOOK) {
+        setPref("notebookName", "");
+      }
     } catch {
       // Ignore.
     }
@@ -155,6 +173,62 @@ async function onExportContent(): Promise<void> {
     return;
   }
 
+  const settings = getSettings();
+  if (!settings.joplinToken) {
+    new ztoolkit.ProgressWindow(config.addonName)
+      .createLine({
+        text: "尚未配置 Joplin Token。请打开 Zotero 设置 → Zotero to Joplin。",
+        type: "fail",
+        progress: 100,
+      })
+      .show();
+    return;
+  }
+
+  let target: { folderId: string; path: string } | null = null;
+
+  try {
+    if (settings.exportLocationMode === "ask") {
+      target = await pickNotebook({
+        settings,
+        title: "选择导出位置",
+        initialFolderId: String(
+          getPref("lastTargetFolderId") || "",
+        ),
+        initialPath: ROOT_NOTEBOOK,
+        showEffectivePath: true,
+      });
+      if (target && !target.folderId) {
+        const client = new JoplinClient(settings);
+        await client.ping();
+        target = await ensureTarget(client, {
+          segments: normalizeFixedSegments(target.path),
+        });
+      }
+    } else {
+      const client = new JoplinClient(settings);
+      await client.ping();
+      target = await ensureTarget(
+        client,
+        resolveDefaultTarget(settings),
+      );
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error || "未知错误");
+    new ztoolkit.ProgressWindow(config.addonName)
+      .createLine({
+        text: `无法确定导出位置：${message}`,
+        type: "fail",
+        progress: 100,
+      })
+      .show();
+    return;
+  }
+
+  if (!target) return;
+  setPref("lastTargetFolderId", target.folderId);
+
   const progressWindow = new ztoolkit.ProgressWindow(config.addonName, {
     closeOnClick: false,
     closeTime: -1,
@@ -169,6 +243,7 @@ async function onExportContent(): Promise<void> {
   try {
     const summary = await syncZoteroItemsAsDocument(
       selected,
+      target.folderId,
       (message, progress) => {
         progressWindow.changeLine({ text: message, progress });
       },

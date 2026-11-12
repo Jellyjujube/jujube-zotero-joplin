@@ -1,13 +1,9 @@
 import { config } from "../../package.json";
 import { JoplinClient } from "./joplinClient";
 import { getSettings } from "./sync";
+import { pickNotebook } from "./notebookPicker";
+import { ROOT_NOTEBOOK } from "./target";
 import { setPref } from "../utils/prefs";
-
-interface NotebookEntry {
-  id: string;
-  title: string;
-  path: string;
-}
 
 function readSettingsFromInputs(doc: Document) {
   const baseUrlInput = doc.getElementById(
@@ -26,7 +22,9 @@ function readSettingsFromInputs(doc: Document) {
 export async function registerPrefsScripts(window: Window): Promise<void> {
   const doc = window.document;
   bindTestConnection(doc);
-  bindNotebookChooser(window, doc);
+  bindNotebookChooser(doc);
+  bindLocationControls(doc);
+  updateLocationVisibility(doc);
 }
 
 function bindTestConnection(doc: Document): void {
@@ -63,7 +61,7 @@ function bindTestConnection(doc: Document): void {
   });
 }
 
-function bindNotebookChooser(window: Window, doc: Document): void {
+function bindNotebookChooser(doc: Document): void {
   const button = doc.getElementById(
     `zotero-prefpane-${config.addonRef}-chooseNotebook`,
   ) as HTMLButtonElement | null;
@@ -80,214 +78,200 @@ function bindNotebookChooser(window: Window, doc: Document): void {
 
   button.addEventListener("click", async () => {
     const settings = readSettingsFromInputs(doc);
-    status.textContent = "正在读取 Joplin 笔记本...";
+    status.textContent = "";
     status.style.color = "";
     button.disabled = true;
 
     try {
-      const client = new JoplinClient(settings);
-      await client.ping();
-      const notebooks = await client.listNotebooks();
-      status.textContent = "";
-      openNotebookDialog(window, client, notebooks, input, status);
+      const result = await pickNotebook({
+        settings,
+        title: "选择默认笔记本",
+        initialPath: input.value,
+      });
+
+      if (result) {
+        const storedPath = result.path === ROOT_NOTEBOOK ? "" : result.path;
+        setPref("notebookName", storedPath);
+        input.value = storedPath;
+        status.textContent = "";
+        status.style.color = "";
+      } else {
+        status.textContent = "";
+      }
     } catch (error) {
       status.textContent = `读取失败：${
         error instanceof Error ? error.message : String(error)
       }`;
       status.style.color = "red";
     } finally {
-      button.disabled = false;
+      updateLocationVisibility(doc);
     }
   });
 }
 
-function openNotebookDialog(
-  _window: Window,
-  client: JoplinClient,
-  notebooks: NotebookEntry[],
-  input: HTMLInputElement,
-  status: HTMLElement,
-): void {
-  const suffix = Date.now().toString(36);
-  const listId = `zotero-joplin-notebook-list-${suffix}`;
-  const newId = `zotero-joplin-notebook-new-${suffix}`;
-
-  const paths = notebooks.map((notebook) => notebook.path);
-  if (input.value && !paths.includes(input.value)) {
-    paths.unshift(input.value);
-  }
-
-  let selectedPath = input.value || "";
-  let newPathValue = "";
-
-  const rows = [
-    { path: "", label: "（顶层，不放入任何笔记本）" },
-    ...paths.map((path) => ({ path, label: path })),
+function bindLocationControls(doc: Document): void {
+  const modeControls: Array<[string, "ask" | "default"]> = [
+    [
+      `zotero-prefpane-${config.addonRef}-modeAsk`,
+      "ask",
+    ],
+    [
+      `zotero-prefpane-${config.addonRef}-modeDefault`,
+      "default",
+    ],
   ];
 
-  const rowElements = rows.map((row) => ({
-    tag: "div",
-    namespace: "html",
-    attributes: { "data-path": row.path },
-    styles: {
-      padding: "8px 10px",
-      margin: "1px 0",
-      cursor: "pointer",
-      borderRadius: "4px",
-      backgroundColor:
-        row.path === selectedPath
-          ? "rgba(0, 120, 215, 0.45)"
-          : "transparent",
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      fontSize: "13px",
-      lineHeight: "1.4",
-    },
-    properties: { textContent: row.label, title: row.label },
-    listeners: [
-      {
-        type: "click",
-        listener: () => {
-          selectedPath = row.path;
-          const doc = dialog.window?.document;
-          const container = doc?.getElementById(listId);
-          container?.querySelectorAll("[data-path]").forEach((node: any) => {
-            node.style.backgroundColor =
-              node.getAttribute("data-path") === selectedPath
-                ? "rgba(0, 120, 215, 0.45)"
-                : "transparent";
-          });
-        },
-      },
-      {
-        type: "mouseenter",
-        listener: (ev: Event) => {
-          const target = ev.target as HTMLElement;
-          if (target.getAttribute("data-path") !== selectedPath) {
-            target.style.backgroundColor = "rgba(128, 128, 128, 0.18)";
-          }
-        },
-      },
-      {
-        type: "mouseleave",
-        listener: (ev: Event) => {
-          const target = ev.target as HTMLElement;
-          if (target.getAttribute("data-path") !== selectedPath) {
-            target.style.backgroundColor = "transparent";
-          }
-        },
-      },
-    ],
-  }));
+  for (const [id, value] of modeControls) {
+    const control = doc.getElementById(id) as any;
+    if (!control) continue;
+    if (control.getAttribute?.("data-bound") === "1") continue;
+    control.setAttribute?.("data-bound", "1");
+    const refresh = () => {
+      setPref("exportLocationMode", value);
+      syncLocationCheckboxes(doc);
+      updateLocationVisibility(doc);
+    };
+    control.addEventListener("command", refresh);
+    control.addEventListener("change", refresh);
+  }
 
-  let dialog: any;
-  dialog = new ztoolkit.Dialog(1, 1)
-    .addCell(0, 0, {
-      tag: "vbox",
-      styles: { padding: "14px" },
-      children: [
-        {
-          tag: "label",
-          namespace: "html",
-          properties: {
-            textContent: "选择已有笔记本（点击一行选中）",
-          },
-          styles: {
-            fontWeight: "bold",
-            marginBottom: "8px",
-            display: "block",
-          },
-        },
-        {
-          tag: "div",
-          namespace: "html",
-          id: listId,
-          styles: {
-            height: "18em",
-            overflowY: "auto",
-            border: "1px solid rgba(128, 128, 128, 0.45)",
-            borderRadius: "6px",
-            padding: "4px",
-            backgroundColor: "rgba(255, 255, 255, 0.04)",
-          },
-          children: rowElements,
-        },
-        {
-          tag: "label",
-          namespace: "html",
-          properties: {
-            textContent:
-              "或输入新笔记本名称（可用 / 分隔多级，留空则使用上面的选择）",
-          },
-          styles: {
-            marginTop: "14px",
-            marginBottom: "6px",
-            display: "block",
-          },
-        },
-        {
-          tag: "input",
-          namespace: "html",
-          id: newId,
-          attributes: { type: "text", placeholder: "例如：Zotero/test" },
-          styles: { width: "36em", padding: "6px" },
-          listeners: [
-            {
-              type: "input",
-              listener: (ev: Event) => {
-                newPathValue = String(
-                  (ev.target as HTMLInputElement).value || "",
-                );
-              },
-            },
-          ],
-        },
-      ],
-    })
-    .addButton("确定", "ok", {
-      callback: async () => {
-        const doc = dialog.window?.document;
-        const newInput = doc?.getElementById(newId) as HTMLInputElement | null;
-        const newPath = String(
-          newInput?.value || newPathValue || "",
-        ).trim();
-        const chosen = newPath || selectedPath;
+  const sourceGroup = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-defaultLocationSourceGroup`,
+  ) as any;
+  const sourceFixed = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-sourceFixed`,
+  ) as any;
+  const sourceCollections = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-sourceCollections`,
+  ) as any;
 
-        setPref("notebookName", chosen);
-        input.value = chosen;
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-
-        if (!chosen) {
-          status.textContent = "已设置为顶层";
-          status.style.color = "green";
-          return;
+  for (const control of [sourceGroup, sourceFixed, sourceCollections]) {
+    if (!control) continue;
+    if (control.getAttribute?.("data-bound") === "1") continue;
+    control.setAttribute?.("data-bound", "1");
+    const refresh = () =>
+      setTimeout(() => {
+        if (sourceGroup?.value) {
+          setPref("defaultLocationSource", String(sourceGroup.value));
         }
+        syncLocationCheckboxes(doc);
+        updateLocationVisibility(doc);
+      }, 0);
+    control.addEventListener("command", refresh);
+    control.addEventListener("change", refresh);
+  }
 
-        if (newPath) {
-          status.textContent = `正在创建笔记本：${newPath}...`;
-          status.style.color = "";
-          try {
-            await client.ensureNotebookPath(newPath);
-            status.textContent = `已创建 / 选择：${newPath}`;
-            status.style.color = "green";
-          } catch (error) {
-            status.textContent = `创建失败：${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            status.style.color = "red";
-          }
-        } else {
-          status.textContent = `已选择：${selectedPath}`;
-          status.style.color = "green";
-        }
-      },
-    })
-    .addButton("取消", "cancel")
-    .open("选择 Joplin 笔记本", {
-      width: 640,
-      height: 460,
-      centerscreen: true,
-      resizable: true,
-    });
+  syncLocationCheckboxes(doc);
+}
+
+function syncLocationCheckboxes(doc: Document): void {
+  const mode = String(
+    Zotero.Prefs.get(
+      `${config.prefsPrefix}.exportLocationMode`,
+      true,
+    ) || "default",
+  );
+  const source = String(
+    Zotero.Prefs.get(
+      `${config.prefsPrefix}.defaultLocationSource`,
+      true,
+    ) || "fixed",
+  );
+
+  const setChecked = (id: string, checked: boolean) => {
+    const element = doc.getElementById(id) as any;
+    if (element) element.checked = checked;
+  };
+
+  setChecked(
+    `zotero-prefpane-${config.addonRef}-modeAsk`,
+    mode === "ask",
+  );
+  setChecked(
+    `zotero-prefpane-${config.addonRef}-modeDefault`,
+    mode === "default",
+  );
+
+  const sourceGroup = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-defaultLocationSourceGroup`,
+  ) as any;
+  if (sourceGroup) {
+    sourceGroup.value = source;
+  }
+}
+
+function updateLocationVisibility(doc: Document): void {
+  const mode = String(
+    Zotero.Prefs.get(
+      `${config.prefsPrefix}.exportLocationMode`,
+      true,
+    ) || "default",
+  );
+  const source = String(
+    Zotero.Prefs.get(
+      `${config.prefsPrefix}.defaultLocationSource`,
+      true,
+    ) || "fixed",
+  );
+
+  const defaultLocationBox = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-defaultLocationBox`,
+  ) as any;
+  const defaultNotebookBox = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-defaultNotebookBox`,
+  ) as any;
+  const collectionsHelp = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-collectionsHelp`,
+  ) as any;
+  const sourceGroup = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-defaultLocationSourceGroup`,
+  ) as any;
+  const notebookInput = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-notebookName`,
+  ) as HTMLInputElement | null;
+  const notebookButton = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-chooseNotebook`,
+  ) as HTMLButtonElement | null;
+
+  const modeAsk = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-modeAsk`,
+  ) as any;
+  const modeDefault = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-modeDefault`,
+  ) as any;
+  const sourceFixed = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-sourceFixed`,
+  ) as any;
+  const sourceCollections = doc.getElementById(
+    `zotero-prefpane-${config.addonRef}-sourceCollections`,
+  ) as any;
+
+  const useDefault = mode === "default";
+  const follow = source === "collections";
+  const notebookEnabled = useDefault && !follow;
+
+  if (defaultLocationBox) {
+    defaultLocationBox.style.opacity = useDefault ? "1" : "0.55";
+  }
+  if (sourceGroup) {
+    sourceGroup.disabled = !useDefault;
+  }
+  if (defaultNotebookBox) {
+    defaultNotebookBox.style.opacity = notebookEnabled ? "1" : "0.55";
+  }
+  if (notebookInput) notebookInput.disabled = !notebookEnabled;
+  if (notebookButton) notebookButton.disabled = !notebookEnabled;
+  if (collectionsHelp) {
+    collectionsHelp.style.opacity = useDefault && follow ? "1" : "0.55";
+  }
+
+  const setRadioLook = (element: any, selected: boolean) => {
+    if (!element) return;
+    element.style.color = selected ? "" : "gray";
+    element.style.opacity = selected ? "1" : "0.6";
+  };
+  setRadioLook(modeAsk, mode === "ask");
+  setRadioLook(modeDefault, mode === "default");
+  setRadioLook(sourceFixed, source === "fixed");
+  setRadioLook(sourceCollections, source === "collections");
 }

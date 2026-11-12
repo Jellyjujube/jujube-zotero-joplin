@@ -1,7 +1,12 @@
+export type ExportLocationMode = "ask" | "default";
+export type DefaultLocationSource = "fixed" | "collections";
+
 export interface PluginSettings {
   joplinBaseUrl: string;
   joplinToken: string;
   notebookName: string;
+  exportLocationMode: ExportLocationMode;
+  defaultLocationSource: DefaultLocationSource;
   includeImages: boolean;
   includeAbstract: boolean;
   includeTags: boolean;
