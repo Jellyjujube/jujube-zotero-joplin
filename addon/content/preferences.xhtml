@@ -4,72 +4,107 @@
 <groupbox
   onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
 >
-  <groupbox>
-    <html:label><html:h3>连接 Joplin</html:h3></html:label>
+  <vbox style="margin-bottom: 8px">
+    <html:label>语言 / Language</html:label>
+    <menulist
+      id="zotero-prefpane-__addonRef__-language"
+      preference="language"
+      style="width: 16em; flex: 0 0 auto; margin-left: 1.5em"
+    >
+      <menupopup>
+        <menuitem label="自动 / Auto" value="auto" />
+        <menuitem label="中文" value="zh-CN" />
+        <menuitem label="English" value="en-US" />
+      </menupopup>
+    </menulist>
+  </vbox>
 
-    <vbox style="margin-bottom: 8px;">
-      <html:label style="color: gray;"
+  <groupbox>
+    <html:label
+      ><html:h3 data-i18n="section.connect">连接 Joplin</html:h3></html:label
+    >
+
+    <vbox style="margin-bottom: 8px; margin-left: 1.5em">
+      <html:label style="color: gray" data-i18n="help.webClipper"
         >在 Joplin 设置 → Web Clipper（网页剪藏器）中启用服务。</html:label
       >
     </vbox>
 
-  <vbox>
-    <html:label for="zotero-prefpane-__addonRef__-joplinBaseUrl"
-      >Joplin API 地址</html:label
-    >
-    <html:input
-      type="text"
-      id="zotero-prefpane-__addonRef__-joplinBaseUrl"
-      preference="joplinBaseUrl"
-      style="width: 32em;"
-    ></html:input>
-    <html:label style="color: gray;"
-      >默认 http://127.0.0.1:41184。</html:label
-    >
-  </vbox>
-
-  <vbox>
-    <html:label for="zotero-prefpane-__addonRef__-joplinToken"
-      >Joplin Token</html:label
-    >
-    <html:input
-      type="password"
-      id="zotero-prefpane-__addonRef__-joplinToken"
-      preference="joplinToken"
-      style="width: 32em;"
-    ></html:input>
-    <html:label style="color: gray;"
-      >复制 Web Clipper（网页剪藏器）中的授权 Token。</html:label
-    >
-    <hbox align="center" style="margin-top: 8px;">
-      <html:button id="zotero-prefpane-__addonRef__-testConnection"
-        >测试 Joplin 连接</html:button
-      >
+    <vbox style="margin-left: 1.5em">
       <html:label
-        id="zotero-prefpane-__addonRef__-connectionStatus"
-        style="margin-left: 1em;"
-      ></html:label>
-    </hbox>
-  </vbox>
+        for="zotero-prefpane-__addonRef__-joplinBaseUrl"
+        data-i18n="label.apiUrl"
+        >Joplin API 地址</html:label
+      >
+      <html:input
+        type="text"
+        id="zotero-prefpane-__addonRef__-joplinBaseUrl"
+        preference="joplinBaseUrl"
+        style="width: 26em; flex: 0 0 auto"
+      ></html:input>
+      <html:label style="color: gray" data-i18n="help.apiUrl"
+        >默认 http://127.0.0.1:41184。</html:label
+      >
+    </vbox>
+
+    <vbox style="margin-left: 1.5em; margin-top: 8px">
+      <html:label
+        for="zotero-prefpane-__addonRef__-joplinToken"
+        data-i18n="label.token"
+        >Joplin Token</html:label
+      >
+      <html:input
+        type="password"
+        id="zotero-prefpane-__addonRef__-joplinToken"
+        preference="joplinToken"
+        style="width: 26em; flex: 0 0 auto"
+      ></html:input>
+      <html:label style="color: gray" data-i18n="help.token"
+        >复制 Web Clipper（网页剪藏器）中的授权 Token。</html:label
+      >
+      <hbox align="center" style="margin-top: 8px">
+        <html:button
+          id="zotero-prefpane-__addonRef__-testConnection"
+          data-i18n="button.testConnection"
+          style="flex: 0 0 auto"
+          >测试 Joplin 连接</html:button
+        >
+        <html:label
+          id="zotero-prefpane-__addonRef__-connectionStatus"
+          style="
+            max-width: 10em;
+            flex: 0 0 auto;
+            margin-left: 1em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          "
+        ></html:label>
+      </hbox>
+    </vbox>
   </groupbox>
 
   <groupbox>
-    <html:label><html:h3>导出位置</html:h3></html:label>
+    <html:label
+      ><html:h3 data-i18n="section.location">导出位置</html:h3></html:label
+    >
 
-    <vbox>
+    <vbox style="margin-left: 1.5em">
       <checkbox
         id="zotero-prefpane-__addonRef__-modeAsk"
         label="每次导出时选择"
+        data-i18n-label="option.modeAsk"
       />
       <checkbox
         id="zotero-prefpane-__addonRef__-modeDefault"
         label="使用默认位置"
+        data-i18n-label="option.modeDefault"
       />
     </vbox>
 
     <vbox
       id="zotero-prefpane-__addonRef__-defaultLocationBox"
-      style="margin-left: 1.5em;"
+      style="margin-left: 3em"
     >
       <radiogroup
         id="zotero-prefpane-__addonRef__-defaultLocationSourceGroup"
@@ -77,20 +112,28 @@
         orient="vertical"
       >
         <vbox>
-          <hbox align="start">
+          <hbox align="center">
             <radio
               id="zotero-prefpane-__addonRef__-sourceFixed"
               label="设置默认笔记本"
+              data-i18n-label="option.sourceFixed"
               value="fixed"
             />
             <html:label
               id="zotero-prefpane-__addonRef__-notebookStatus"
-              style="color: red; margin-left: 8px; flex: 1; min-width: 0; max-width: 32em; white-space: normal; overflow-wrap: anywhere; word-break: break-word;"
+              style="
+                max-width: 10em;
+                flex: 0 0 auto;
+                margin-left: 1em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              "
             ></html:label>
           </hbox>
           <vbox
             id="zotero-prefpane-__addonRef__-defaultNotebookBox"
-            style="margin-left: 1.5em;"
+            style="margin-left: 1.5em"
           >
             <hbox align="center">
               <html:input
@@ -99,9 +142,12 @@
                 preference="notebookName"
                 placeholder="Zotero"
                 readonly="true"
-                style="width: 24em;"
+                style="width: 20em; flex: 0 0 auto; margin-right: 8px"
               ></html:input>
-              <html:button id="zotero-prefpane-__addonRef__-chooseNotebook"
+              <html:button
+                id="zotero-prefpane-__addonRef__-chooseNotebook"
+                data-i18n="button.choose"
+                style="flex: 0 0 auto"
                 >选择</html:button
               >
             </hbox>
@@ -112,14 +158,16 @@
           <radio
             id="zotero-prefpane-__addonRef__-sourceCollections"
             label="跟随 Zotero 分类树"
+            data-i18n-label="option.sourceCollections"
             value="collections"
           />
           <vbox
             id="zotero-prefpane-__addonRef__-collectionsHelp"
-            style="margin-left: 1.5em;"
+            style="margin-left: 1.5em"
           >
-            <html:label style="color: gray;"
-              >跟随当前导出视图指示分类；视图未指示分类时导出到 Zotero 目录。</html:label
+            <html:label style="color: gray" data-i18n="help.collections"
+              >跟随当前导出视图指示分类；视图未指示分类时导出到 Zotero
+              目录。</html:label
             >
           </vbox>
         </vbox>
@@ -128,33 +176,404 @@
   </groupbox>
 
   <groupbox>
-    <html:label><html:h3>导出内容</html:h3></html:label>
-    <html:label style="color: gray; margin-bottom: 6px; display: block;"
+    <html:label
+      ><html:h3 data-i18n="section.content">导出内容</html:h3></html:label
+    >
+    <html:label
+      style="
+        color: gray;
+        margin-bottom: 6px;
+        margin-left: 1.5em;
+        display: block;
+      "
+      data-i18n="help.content"
       >默认导出条目信息、Zotero 笔记和 PDF 注释。以下为可选内容。</html:label
     >
-    <vbox>
+    <vbox style="margin-left: 1.5em">
       <checkbox
         id="zotero-prefpane-__addonRef__-includeImages"
         preference="includeImages"
         label="包含图片/绘图注释（上传为 Joplin 资源）"
+        data-i18n-label="option.includeImages"
       />
       <checkbox
         id="zotero-prefpane-__addonRef__-includeAbstract"
         preference="includeAbstract"
         label="包含摘要"
+        data-i18n-label="option.includeAbstract"
       />
       <checkbox
         id="zotero-prefpane-__addonRef__-includeTags"
         preference="includeTags"
         label="把 Zotero 标签同步为 Joplin 标签"
+        data-i18n-label="option.includeTags"
       />
     </vbox>
   </groupbox>
 
-  <vbox style="margin-top: 8px;">
-    <html:label style="color: gray;"
+  <groupbox>
+    <html:label><html:h3 data-i18n="ai.section">AI 功能</html:h3></html:label>
+    <html:label
+      style="color: gray; display: block; margin-left: 1.5em"
+      data-i18n="ai.privacy"
+      >启用后，论文全文和笔记会发送到你配置的 API 服务。API Key
+      仅保存在本机。</html:label
+    >
+    <checkbox
+      id="zotero-prefpane-__addonRef__-aiEnabled"
+      label="启用 AI 功能"
+      data-i18n-label="ai.enable"
+      style="margin-left: 1.5em"
+    />
+    <vbox id="zotero-prefpane-__addonRef__-aiBody" style="margin-left: 1.5em">
+      <vbox>
+        <html:label style="font-weight: bold" data-i18n="ai.apiSection"
+          >API 设置</html:label
+        >
+        <vbox style="margin-left: 1.5em">
+          <hbox align="center">
+            <html:label data-i18n="ai.provider">接口格式</html:label>
+            <menulist
+              id="zotero-prefpane-__addonRef__-aiProvider"
+              preference="aiProvider"
+              style="width: 12em; flex: 0 0 auto; margin-left: 12px"
+            >
+              <menupopup>
+                <menuitem
+                  label="OpenAI"
+                  value="openai"
+                  data-i18n-label="ai.provider.openai"
+                />
+                <menuitem
+                  label="Ollama"
+                  value="ollama"
+                  data-i18n-label="ai.provider.ollama"
+                />
+                <menuitem
+                  label="LM Studio"
+                  value="lmstudio"
+                  data-i18n-label="ai.provider.lmstudio"
+                />
+                <menuitem
+                  label="Custom"
+                  value="custom"
+                  data-i18n-label="ai.provider.custom"
+                />
+              </menupopup>
+            </menulist>
+          </hbox>
+          <vbox style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiApiBaseUrl"
+              data-i18n="ai.baseUrl"
+              >Base URL</html:label
+            >
+            <html:input
+              type="text"
+              id="zotero-prefpane-__addonRef__-aiApiBaseUrl"
+              preference="aiApiBaseUrl"
+              style="width: 26em; flex: 0 0 auto"
+            ></html:input>
+          </vbox>
+          <vbox style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiApiKey"
+              data-i18n="ai.apiKey"
+              >API Key</html:label
+            >
+            <html:input
+              type="password"
+              id="zotero-prefpane-__addonRef__-aiApiKey"
+              preference="aiApiKey"
+              style="width: 26em; flex: 0 0 auto"
+            ></html:input>
+            <html:label style="color: gray" data-i18n="ai.apiKeyHelp"
+              >本地服务可留空。</html:label
+            >
+          </vbox>
+          <vbox style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiModelSelect"
+              data-i18n="ai.model"
+              >模型</html:label
+            >
+            <hbox align="center">
+              <menulist
+                id="zotero-prefpane-__addonRef__-aiModelSelect"
+                editable="true"
+                style="width: 16em; flex: 0 0 auto"
+              >
+                <menupopup>
+                  <menuitem
+                    label="手动输入"
+                    value=""
+                    data-i18n-label="ai.modelManual"
+                  />
+                </menupopup>
+              </menulist>
+              <html:button
+                id="zotero-prefpane-__addonRef__-aiFetchModels"
+                data-i18n="ai.fetchModels"
+                style="flex: 0 0 auto; margin-left: 8px"
+                >获取模型</html:button
+              >
+              <html:label
+                id="zotero-prefpane-__addonRef__-aiModelStatus"
+                style="
+                  max-width: 10em;
+                  flex: 0 0 auto;
+                  margin-left: 1em;
+                  white-space: nowrap;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                "
+              ></html:label>
+            </hbox>
+            <hbox align="center" style="margin-top: 8px">
+              <html:label
+                for="zotero-prefpane-__addonRef__-aiChunkSizeChars"
+                data-i18n="ai.chunkSize"
+                >分块字符数</html:label
+              >
+              <html:input
+                type="number"
+                id="zotero-prefpane-__addonRef__-aiChunkSizeChars"
+                min="2000"
+                max="60000"
+                step="1000"
+                style="width: 8em; flex: 0 0 auto; margin-left: 8px"
+              ></html:input>
+              <html:label
+                for="zotero-prefpane-__addonRef__-aiMaxPdfChars"
+                data-i18n="ai.maxPdfChars"
+                style="margin-left: 24px"
+                >PDF 最大字符数</html:label
+              >
+              <html:input
+                type="number"
+                id="zotero-prefpane-__addonRef__-aiMaxPdfChars"
+                min="10000"
+                max="2000000"
+                step="10000"
+                style="width: 9em; flex: 0 0 auto; margin-left: 8px"
+              ></html:input>
+            </hbox>
+            <html:label
+              style="color: gray; display: block; margin-top: 4px"
+              data-i18n="ai.costHelp"
+              >长论文会自动分块并多次请求；分块越大，上下文越完整，费用越高。</html:label
+            >
+          </vbox>
+          <hbox align="center" style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiTemperature"
+              data-i18n="ai.temperature"
+              >温度</html:label
+            >
+            <html:input
+              type="number"
+              id="zotero-prefpane-__addonRef__-aiTemperature"
+              min="0"
+              max="2"
+              step="0.1"
+              style="width: 6em; flex: 0 0 auto; margin-left: 8px"
+            ></html:input>
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiMaxTokens"
+              data-i18n="ai.maxTokens"
+              style="margin-left: 24px"
+              >最大输出 token</html:label
+            >
+            <html:input
+              type="number"
+              id="zotero-prefpane-__addonRef__-aiMaxTokens"
+              min="64"
+              max="32768"
+              step="64"
+              style="width: 8em; flex: 0 0 auto; margin-left: 8px"
+            ></html:input>
+          </hbox>
+          <vbox style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiExtraHeaders"
+              data-i18n="ai.extraHeaders"
+              >额外请求头（JSON）</html:label
+            >
+            <html:textarea
+              id="zotero-prefpane-__addonRef__-aiExtraHeaders"
+              rows="3"
+              style="
+                width: 26em;
+                flex: 0 0 auto;
+                resize: none;
+                font-family: monospace;
+              "
+            ></html:textarea>
+            <html:label style="color: gray" data-i18n="ai.extraHeadersHelp"
+              >可选，例如 {"X-Provider":"value"}。</html:label
+            >
+          </vbox>
+          <hbox align="center" style="margin-top: 8px">
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiRequestTimeoutMs"
+              data-i18n="ai.timeout"
+              >请求超时（毫秒）</html:label
+            >
+            <html:input
+              type="number"
+              id="zotero-prefpane-__addonRef__-aiRequestTimeoutMs"
+              min="5000"
+              max="600000"
+              step="1000"
+              style="width: 8em; flex: 0 0 auto; margin-left: 8px"
+            ></html:input>
+            <html:label
+              for="zotero-prefpane-__addonRef__-aiMaxRetries"
+              data-i18n="ai.maxRetries"
+              style="margin-left: 24px"
+              >最大重试次数</html:label
+            >
+            <html:input
+              type="number"
+              id="zotero-prefpane-__addonRef__-aiMaxRetries"
+              min="0"
+              max="5"
+              step="1"
+              style="width: 5em; flex: 0 0 auto; margin-left: 8px"
+            ></html:input>
+          </hbox>
+          <hbox align="center" style="margin-top: 8px">
+            <html:button
+              id="zotero-prefpane-__addonRef__-aiTestConnection"
+              data-i18n="ai.testConnection"
+              style="flex: 0 0 auto"
+              >测试 AI 连接</html:button
+            >
+            <html:label
+              id="zotero-prefpane-__addonRef__-aiConnectionStatus"
+              style="
+                max-width: 10em;
+                flex: 0 0 auto;
+                margin-left: 1em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              "
+            ></html:label>
+          </hbox>
+        </vbox>
+      </vbox>
+
+      <vbox>
+        <html:label
+          style="font-weight: bold; display: block; margin-top: 14px"
+          data-i18n="ai.featuresSection"
+          >功能开关</html:label
+        >
+        <vbox style="margin-left: 1.5em">
+          <checkbox
+            id="zotero-prefpane-__addonRef__-aiPdfSummaryEnabled"
+            preference="aiPdfSummaryEnabled"
+            label="AI 总结论文全文"
+            data-i18n-label="ai.pdfSummary"
+          />
+          <vbox style="margin-left: 1.5em; margin-top: 4px">
+            <hbox align="center">
+              <html:label
+                for="zotero-prefpane-__addonRef__-aiPdfSummaryPrompt"
+                data-i18n="ai.promptPdf"
+                >论文全文总结提示词</html:label
+              >
+              <html:button
+                id="zotero-prefpane-__addonRef__-aiPdfSummaryPromptReset"
+                data-i18n="ai.resetPrompt"
+                style="font-size: 0.85em; padding: 1px 6px; margin-left: 6px"
+                >恢复默认</html:button
+              >
+            </hbox>
+            <html:textarea
+              id="zotero-prefpane-__addonRef__-aiPdfSummaryPrompt"
+              rows="5"
+              style="
+                width: 25em;
+                flex: 0 0 auto;
+                resize: none;
+                font-family: monospace;
+              "
+            ></html:textarea>
+          </vbox>
+        </vbox>
+      </vbox>
+
+      <vbox>
+        <html:label
+          style="font-weight: bold; display: block; margin-top: 14px"
+          data-i18n="ai.advancedSection"
+          >高级设置</html:label
+        >
+        <vbox style="margin-left: 1.5em">
+          <hbox align="center">
+            <checkbox
+              id="zotero-prefpane-__addonRef__-aiCacheEnabled"
+              preference="aiCacheEnabled"
+              label="启用 AI 结果缓存"
+              data-i18n-label="ai.cacheEnabled"
+              style="flex: 0 0 auto"
+            />
+            <html:button
+              id="zotero-prefpane-__addonRef__-aiClearCache"
+              data-i18n="ai.clearCache"
+              style="flex: 0 0 auto; margin-left: 8px"
+              >清除 AI 缓存</html:button
+            >
+            <html:label
+              id="zotero-prefpane-__addonRef__-aiCacheStatus"
+              style="
+                max-width: 10em;
+                flex: 0 0 auto;
+                margin-left: 1em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              "
+            ></html:label>
+          </hbox>
+          <hbox align="center" style="margin-top: 8px">
+            <html:label data-i18n="ai.outputLanguage">AI 输出语言</html:label>
+            <menulist
+              id="zotero-prefpane-__addonRef__-aiOutputLanguage"
+              preference="aiOutputLanguage"
+              style="width: 12em; flex: 0 0 auto; margin-left: 12px"
+            >
+              <menupopup>
+                <menuitem label="跟随界面 / Follow UI" value="ui" />
+                <menuitem label="中文" value="zh-CN" />
+                <menuitem label="English" value="en-US" />
+              </menupopup>
+            </menulist>
+          </hbox>
+        </vbox>
+      </vbox>
+    </vbox>
+  </groupbox>
+  <groupbox>
+    <html:label><html:h3 data-i18n="section.logging">日志</html:h3></html:label>
+    <checkbox
+      id="zotero-prefpane-__addonRef__-loggingEnabled"
+      preference="loggingEnabled"
+      label="启用运行日志"
+      data-i18n-label="option.loggingEnabled"
+      style="margin-left: 1.5em"
+    />
+    <html:label style="color: gray; margin-left: 1.5em" data-i18n="help.logging"
+      >记录运行过程到 Zotero 数据目录的
+      zotero-joplin.log。不会记录笔记/论文正文或 API Key。</html:label
+    >
+  </groupbox>
+
+  <vbox style="margin-top: 8px">
+    <html:label style="color: gray" data-i18n="help.usage"
       >使用方法：在 Zotero 条目列表右键 → “导出内容到 Joplin”。</html:label
     >
   </vbox>
-
 </groupbox>

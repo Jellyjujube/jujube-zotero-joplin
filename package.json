@@ -1,7 +1,7 @@
 {
   "name": "zotero-joplin",
   "type": "module",
-  "version": "1.1.13",
+  "version": "1.3.11",
   "description": "Sync Zotero child notes and PDF annotations to Joplin",
   "config": {
     "addonName": "Zotero to Joplin",
@@ -18,7 +18,7 @@
     "lint:check": "prettier --check . && eslint .",
     "lint:fix": "prettier --write . && eslint . --fix",
     "release": "zotero-plugin release",
-    "test:unit": "tsx scripts/render-sample.ts && tsx scripts/test-joplin-client.ts && tsx scripts/test-sync-utils.ts",
+    "test:unit": "tsx scripts/render-sample.ts && tsx scripts/test-joplin-client.ts && tsx scripts/test-sync-utils.ts && tsx scripts/test-ai-prompts.ts && tsx scripts/test-ai-fulltext.ts && tsx scripts/test-ai-client.ts && tsx scripts/test-ai-cache.ts && tsx scripts/test-ai-orchestrator.ts && tsx scripts/test-ai-formatter.ts",
     "update-deps": "npm update --save"
   },
   "dependencies": {

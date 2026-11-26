@@ -13,6 +13,7 @@ import {
   collectStandaloneNoteData,
 } from "./zoteroData";
 import {
+  AiSettings,
   ExportMode,
   ItemData,
   NoteKind,
@@ -20,7 +21,25 @@ import {
   SyncSummary,
 } from "./types";
 import { getPref } from "../utils/prefs";
+import { sha256Hex } from "../utils/hash";
+import {
+  AI_NOTES_FEATURES_ENABLED,
+  AI_PROVIDER_PRESETS,
+  clampNumber,
+  normalizeOrganizeMode,
+  normalizeOutputLanguage,
+  normalizeProvider,
+  parseExtraHeaders,
+} from "./aiConfig";
+import { getEffectiveLanguage, t } from "./i18n";
 import { appendDebugLog } from "../utils/debugLog";
+import { logInfo, logWarn } from "../utils/logger";
+import {
+  createAiRuntime,
+  flushAiRuntime,
+  runAiForItem,
+} from "./aiOrchestrator";
+import { AiResult } from "./aiTypes";
 import {
   generateNoteId,
   makeUserData,
@@ -37,16 +56,64 @@ export function getSettings(): PluginSettings {
   const source = String(getPref("defaultLocationSource") || "fixed");
   return {
     joplinBaseUrl:
-      String(getPref("joplinBaseUrl") || "").trim() ||
-      "http://127.0.0.1:41184",
+      String(getPref("joplinBaseUrl") || "").trim() || "http://127.0.0.1:41184",
     joplinToken: String(getPref("joplinToken") || "").trim(),
     notebookName: String(getPref("notebookName") || "").trim(),
     exportLocationMode: mode === "ask" ? "ask" : "default",
-    defaultLocationSource:
-      source === "collections" ? "collections" : "fixed",
+    defaultLocationSource: source === "collections" ? "collections" : "fixed",
     includeImages: Boolean(getPref("includeImages")),
     includeAbstract: Boolean(getPref("includeAbstract")),
     includeTags: Boolean(getPref("includeTags")),
+    language: getEffectiveLanguage(),
+    ai: getAiSettings(),
+  };
+}
+
+export function getAiSettings(): AiSettings {
+  const provider = normalizeProvider(getPref("aiProvider"));
+  const preset = AI_PROVIDER_PRESETS[provider];
+  const extraHeaders = String(getPref("aiExtraHeaders") || "{}");
+  const parsedExtraHeaders = parseExtraHeaders(extraHeaders);
+  return {
+    enabled: Boolean(getPref("aiEnabled")),
+    provider,
+    baseUrl: String(getPref("aiApiBaseUrl") || "").trim() || preset.baseUrl,
+    apiKey: String(getPref("aiApiKey") || "").trim(),
+    model: String(getPref("aiModel") || "").trim() || preset.modelPlaceholder,
+    temperature: clampNumber(getPref("aiTemperature"), 0.2, 0, 2),
+    maxTokens: Math.floor(clampNumber(getPref("aiMaxTokens"), 8192, 64, 32768)),
+    extraHeaders,
+    extraHeadersError: parsedExtraHeaders.error,
+    timeoutMs: Math.floor(
+      clampNumber(getPref("aiRequestTimeoutMs"), 120000, 5000, 600000),
+    ),
+    maxRetries: Math.floor(clampNumber(getPref("aiMaxRetries"), 2, 0, 5)),
+    outputLanguage: normalizeOutputLanguage(getPref("aiOutputLanguage")),
+    pdfSummaryEnabled: Boolean(getPref("aiPdfSummaryEnabled")),
+    pdfSummaryPrompt: String(getPref("aiPdfSummaryPrompt") || ""),
+    notesSummaryEnabled:
+      AI_NOTES_FEATURES_ENABLED && Boolean(getPref("aiNotesSummaryEnabled")),
+    notesSummaryPrompt: String(getPref("aiNotesSummaryPrompt") || ""),
+    organizeEnabled:
+      AI_NOTES_FEATURES_ENABLED && Boolean(getPref("aiOrganizeEnabled")),
+    organizePrompt: String(getPref("aiOrganizePrompt") || ""),
+    organizeMode: normalizeOrganizeMode(getPref("aiOrganizeMode")),
+    chunkSizeChars: Math.floor(
+      clampNumber(getPref("aiChunkSizeChars"), 16000, 2000, 60000),
+    ),
+    maxPdfChars: Math.floor(
+      clampNumber(getPref("aiMaxPdfChars"), 320000, 10000, 2000000),
+    ),
+    maxNotesChars: Math.floor(
+      clampNumber(getPref("aiMaxNotesChars"), 200000, 10000, 1000000),
+    ),
+    annotationContextEnabled:
+      AI_NOTES_FEATURES_ENABLED &&
+      Boolean(getPref("aiAnnotationContextEnabled")),
+    annotationContextChars: Math.floor(
+      clampNumber(getPref("aiAnnotationContextChars"), 500, 100, 3000),
+    ),
+    cacheEnabled: Boolean(getPref("aiCacheEnabled")),
   };
 }
 
@@ -61,27 +128,7 @@ export function mergeManagedRegion(
   return body.replace(MANAGED_BLOCK_RE, generatedBlock.trim());
 }
 
-async function sha256Hex(value: string): Promise<string> {
-  try {
-    const data = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  } catch {
-    // crypto.subtle is available in Zotero 10, but keep a fallback for
-    // older/odd environments.
-    const internal = (Zotero.Utilities as any).Internal;
-    if (internal?.md5) {
-      return String(internal.md5(value));
-    }
-    throw new Error("No hashing implementation available");
-  }
-}
-
-export async function deterministicFolderId(
-  data: ItemData,
-): Promise<string> {
+export async function deterministicFolderId(data: ItemData): Promise<string> {
   return (
     await sha256Hex(`zotero-joplin-folder:${data.libraryID}:${data.key}`)
   ).slice(0, 32);
@@ -126,6 +173,7 @@ async function uploadAnnotationImages(
   data: ItemData,
   markdown: string,
   existingBody = "",
+  language = getEffectiveLanguage(),
 ): Promise<string> {
   let result = markdown;
   const existingResources = parseImageResources(existingBody);
@@ -166,7 +214,7 @@ async function uploadAnnotationImages(
         await appendDebugLog(
           `Image upload failed for item ${data.key}, annotation ${annotation.key}: ${detail}`,
         );
-        result = result.replace(token, "（图片上传失败）");
+        result = result.replace(token, t(language, "error.imageUploadFailed"));
       }
     }
   }
@@ -189,14 +237,9 @@ async function upsertNote(
   existingNote?: any,
 ): Promise<UpsertAction> {
   const existing =
-    existingNote !== undefined
-      ? existingNote
-      : await client.getNote(input.id);
+    existingNote !== undefined ? existingNote : await client.getNote(input.id);
   if (existing) {
-    const merged = mergeManagedRegion(
-      String(existing.body || ""),
-      input.body,
-    );
+    const merged = mergeManagedRegion(String(existing.body || ""), input.body);
     if (merged === null) return "skipped";
     await client.updateNote(input.id, {
       title: input.title,
@@ -228,10 +271,7 @@ async function upsertNote(
     // before giving up.
     const raced = await client.getNote(input.id);
     if (!raced) throw error;
-    const merged = mergeManagedRegion(
-      String(raced.body || ""),
-      input.body,
-    );
+    const merged = mergeManagedRegion(String(raced.body || ""), input.body);
     if (merged === null) return "skipped";
     await client.updateNote(input.id, {
       title: input.title,
@@ -292,8 +332,7 @@ async function buildUserDataIndex(
 
     // If the user duplicated a note (copying user_data), prefer the oldest
     // non-conflict note.
-    const existingTime =
-      createdTimes.get(key) || Number.MAX_SAFE_INTEGER;
+    const existingTime = createdTimes.get(key) || Number.MAX_SAFE_INTEGER;
     if (created && created < existingTime) {
       index.set(key, id);
       createdTimes.set(key, created);
@@ -305,9 +344,7 @@ async function buildUserDataIndex(
 
 function uniqueTags(tags: string[]): string[] {
   return [
-    ...new Set(
-      tags.map((tag) => String(tag || "").trim()).filter(Boolean),
-    ),
+    ...new Set(tags.map((tag) => String(tag || "").trim()).filter(Boolean)),
   ];
 }
 
@@ -346,7 +383,7 @@ async function syncNoteTags(
   await applyTags(client, noteId, desired, cache);
   if (!tracked.size) return;
 
-  let currentTags: Array<{ id: string; title: string }> = [];
+  let currentTags: Array<{ id: string; title: string }>;
   try {
     currentTags = await client.listNoteTags(noteId);
   } catch {
@@ -375,19 +412,25 @@ export async function syncZoteroItemsAsDocument(
 ): Promise<SyncSummary> {
   const settings = getSettings();
   if (!settings.joplinToken) {
-    throw new Error(
-      "尚未配置 Joplin Token。请打开 Zotero 设置 → Zotero to Joplin，填入 Joplin Web Clipper 的 Token。",
-    );
+    throw new Error(t(settings.language, "error.noToken"));
   }
 
   const client = new JoplinClient(settings);
-  onProgress?.("正在连接 Joplin...", 0);
+  onProgress?.(t(settings.language, "progress.connecting"), 0);
   await client.ping();
 
-  onProgress?.("正在读取已有 Joplin 笔记...", 1);
+  onProgress?.(t(settings.language, "progress.reading"), 1);
   const userDataIndex = await buildUserDataIndex(client);
 
   const { regularItems, standaloneNotes } = collectSelectedItems(items);
+  const sourceItems = new Map<string, Zotero.Item>();
+  for (const item of regularItems) {
+    sourceItems.set(`${item.libraryID}:${item.key}`, item);
+  }
+  for (const note of standaloneNotes) {
+    sourceItems.set(`${note.libraryID}:${note.key}`, note);
+  }
+
   const dataList: ItemData[] = [];
   for (const item of regularItems) {
     dataList.push(await collectItemData(item));
@@ -402,117 +445,169 @@ export async function syncZoteroItemsAsDocument(
     skipped: 0,
     failed: 0,
     errors: [],
+    warnings: [],
   };
   if (!dataList.length) return summary;
 
+  const aiRuntime = await createAiRuntime(settings);
+  summary.warnings.push(...aiRuntime.warnings);
+  await logInfo(
+    `Document export start: items=${dataList.length} ai=${aiRuntime.enabled} target=${targetFolderId}`,
+  );
   const tagCache = new Map<string, string | undefined>();
 
-  for (let index = 0; index < dataList.length; index++) {
-    const data = dataList[index];
-    const progress = Math.round((index / dataList.length) * 100);
-    onProgress?.(`正在导出内容：${data.title}`, progress);
+  try {
+    for (let index = 0; index < dataList.length; index++) {
+      const data = dataList[index];
+      const progress = Math.round((index / dataList.length) * 100);
+      onProgress?.(
+        t(settings.language, "progress.exporting", { title: data.title }),
+        progress,
+      );
+      await logInfo(`Item ${data.key}: export start`);
 
-    try {
-      const mapKey = paperKey(data);
-      let noteId = userDataIndex.get(mapKey);
-      let existingNote: any = null;
+      try {
+        const mapKey = paperKey(data);
+        let noteId = userDataIndex.get(mapKey);
+        let existingNote: any = null;
 
-      if (noteId) {
-        existingNote = await client.getNote(noteId);
-        if (
-          !existingNote ||
-          Number(existingNote.deleted_time || 0) > 0 ||
-          Number(existingNote.is_conflict || 0) === 1
-        ) {
-          noteId = undefined;
-          existingNote = null;
+        if (noteId) {
+          existingNote = await client.getNote(noteId);
+          if (
+            !existingNote ||
+            Number(existingNote.deleted_time || 0) > 0 ||
+            Number(existingNote.is_conflict || 0) === 1
+          ) {
+            noteId = undefined;
+            existingNote = null;
+          }
         }
-      }
 
-      // One-time migration from the old deterministic ID. Never reuse an ID
-      // that has been deleted: Joplin sync treats that as a conflict.
-      if (!noteId) {
-        const legacyId = await deterministicNoteId(data, "literature");
-        const legacy = await client.getNote(legacyId);
-        if (
-          legacy &&
-          Number(legacy.deleted_time || 0) === 0 &&
-          Number(legacy.is_conflict || 0) !== 1
-        ) {
-          noteId = legacyId;
-          existingNote = legacy;
+        // One-time migration from the old deterministic ID. Never reuse an ID
+        // that has been deleted: Joplin sync treats that as a conflict.
+        if (!noteId) {
+          const legacyId = await deterministicNoteId(data, "literature");
+          const legacy = await client.getNote(legacyId);
+          if (
+            legacy &&
+            Number(legacy.deleted_time || 0) === 0 &&
+            Number(legacy.is_conflict || 0) !== 1
+          ) {
+            noteId = legacyId;
+            existingNote = legacy;
+          }
         }
-      }
 
-      if (!noteId) {
-        noteId = await generateNoteId(data);
-      }
+        if (!noteId) {
+          noteId = await generateNoteId(data);
+        }
 
-      const previousTags = parseUserDataTags(
-        String(existingNote?.user_data || ""),
-      );
-      const desiredTags = settings.includeTags
-        ? uniqueTags(data.tags)
-        : [];
-      // Track every tag ever seen in Zotero. This lets the next export remove
-      // a tag even if tag syncing was turned off in between.
-      const trackedTags = uniqueTags([...previousTags, ...data.tags]);
+        const previousTags = parseUserDataTags(
+          String(existingNote?.user_data || ""),
+        );
+        const desiredTags = settings.includeTags ? uniqueTags(data.tags) : [];
+        // Track every tag ever seen in Zotero. This lets the next export remove
+        // a tag even if tag syncing was turned off in between.
+        const trackedTags = uniqueTags([...previousTags, ...data.tags]);
 
-      let markdown = formatDocumentNote(data, settings);
-      markdown = await uploadAnnotationImages(
-        client,
-        data,
-        markdown,
-        String(existingNote?.body || ""),
-      );
+        let aiResult: AiResult | undefined;
+        if (aiRuntime.enabled) {
+          try {
+            aiResult = await runAiForItem({
+              settings,
+              runtime: aiRuntime,
+              data,
+              item: sourceItems.get(paperKey(data)) || null,
+              existingBody: String(existingNote?.body || ""),
+              onProgress: (message) => onProgress?.(message, progress),
+            });
+            summary.warnings.push(...aiResult.warnings, ...aiResult.errors);
+          } catch (error) {
+            summary.warnings.push(
+              t(settings.language, "ai.warn.featureFailed", {
+                feature: "AI",
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            );
+          }
+        }
 
-      const action = await upsertNote(
-        client,
-        {
-          id: noteId,
-          title: data.title || "Untitled",
-          body: markdown,
-          parent_id: targetFolderId,
-          user_data: makeUserData(data, trackedTags),
-        },
-        existingNote,
-      );
-      const ok = recordAction(
-        action,
-        summary,
-        `${data.title}：找不到托管区域标记，已跳过。`,
-      );
-
-      if (ok) {
-        userDataIndex.set(mapKey, noteId);
-      }
-
-      if (ok) {
-        await syncNoteTags(
+        let markdown = formatDocumentNote(data, settings, aiResult);
+        markdown = await uploadAnnotationImages(
           client,
-          noteId,
-          desiredTags,
-          trackedTags,
-          tagCache,
+          data,
+          markdown,
+          String(existingNote?.body || ""),
+          settings.language,
+        );
+
+        const action = await upsertNote(
+          client,
+          {
+            id: noteId,
+            title: data.title || "Untitled",
+            body: markdown,
+            parent_id: targetFolderId,
+            user_data: makeUserData(data, trackedTags),
+          },
+          existingNote,
+        );
+        const ok = recordAction(
+          action,
+          summary,
+          t(settings.language, "error.missingMarkers", {
+            title: data.title,
+          }),
+        );
+
+        if (ok) {
+          userDataIndex.set(mapKey, noteId);
+        }
+
+        if (ok) {
+          await syncNoteTags(
+            client,
+            noteId,
+            desiredTags,
+            trackedTags,
+            tagCache,
+          );
+          await logInfo(`Item ${data.key}: ${action}`);
+        }
+      } catch (error) {
+        summary.failed++;
+        const message =
+          error instanceof Error ? error.message : String(error || "未知错误");
+        summary.errors.push(`${data.title}：${message}`);
+        await logWarn(`Item ${data.key}: export failed: ${message}`);
+        Zotero.debug(
+          `[Zotero to Joplin] Document export failed for ${data.key}: ${error}`,
+        );
+        await appendDebugLog(
+          `Document export failed for ${data.key}: ${
+            error instanceof Error
+              ? error.stack || error.message
+              : String(error)
+          }`,
         );
       }
+    }
+  } finally {
+    try {
+      await flushAiRuntime(aiRuntime);
     } catch (error) {
-      summary.failed++;
-      const message =
-        error instanceof Error ? error.message : String(error || "未知错误");
-      summary.errors.push(`${data.title}：${message}`);
-      Zotero.debug(
-        `[Zotero to Joplin] Document export failed for ${data.key}: ${error}`,
+      const message = error instanceof Error ? error.message : String(error);
+      summary.warnings.push(
+        t(settings.language, "ai.warn.cacheWriteFailed", { error: message }),
       );
-      await appendDebugLog(
-        `Document export failed for ${data.key}: ${
-          error instanceof Error ? error.stack || error.message : String(error)
-        }`,
-      );
+      await logWarn(`AI cache write failed: ${message}`);
     }
   }
 
-  onProgress?.("导出完成", 100);
+  await logInfo(
+    `Document export finished: created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} failed=${summary.failed} warnings=${summary.warnings.length}`,
+  );
+  onProgress?.(t(settings.language, "progress.done"), 100);
   return summary;
 }
 
@@ -560,6 +655,7 @@ export async function syncZoteroItems(
     skipped: 0,
     failed: 0,
     errors: [],
+    warnings: [],
   };
 
   if (!dataList.length) {
@@ -571,10 +667,7 @@ export async function syncZoteroItems(
   for (let index = 0; index < dataList.length; index++) {
     const data = dataList[index];
     const progress = Math.round((index / dataList.length) * 100);
-    onProgress?.(
-      `正在导出${modeLabel(mode)}：${data.title}`,
-      progress,
-    );
+    onProgress?.(`正在导出${modeLabel(mode)}：${data.title}`, progress);
 
     try {
       const hasNotesContent = hasNotes(data);
@@ -602,7 +695,7 @@ export async function syncZoteroItems(
         const action = await upsertNote(client, {
           id: notesId,
           title: "笔记",
-          body: formatNotesNote(data),
+          body: formatNotesNote(data, settings.language),
           parent_id: folderId,
         });
         if (
@@ -645,9 +738,7 @@ export async function syncZoteroItems(
       if (mode === "all") {
         const literatureBody = formatLiteratureNote(data, settings, {
           notesNoteId: hasNotesContent ? notesId : undefined,
-          annotationsNoteId: hasAnnotationsContent
-            ? annotationsId
-            : undefined,
+          annotationsNoteId: hasAnnotationsContent ? annotationsId : undefined,
         });
         recordAction(
           await upsertNote(client, {
@@ -666,7 +757,7 @@ export async function syncZoteroItems(
             await upsertNote(client, {
               id: notesId,
               title: "笔记",
-              body: formatNotesNote(data),
+              body: formatNotesNote(data, settings.language),
               parent_id: folderId,
             }),
             summary,
@@ -698,7 +789,7 @@ export async function syncZoteroItems(
           await upsertNote(client, {
             id: notesId,
             title: "笔记",
-            body: formatNotesNote(data),
+            body: formatNotesNote(data, settings.language),
             parent_id: folderId,
           }),
           summary,
@@ -734,6 +825,7 @@ export async function syncZoteroItems(
       const message =
         error instanceof Error ? error.message : String(error || "未知错误");
       summary.errors.push(`${data.title}：${message}`);
+      await logWarn(`Item ${data.key}: export failed: ${message}`);
       Zotero.debug(`[Zotero to Joplin] Sync failed for ${data.key}: ${error}`);
       await appendDebugLog(
         `Sync failed for ${data.key} (${mode}): ${

@@ -1,5 +1,6 @@
 import { config } from "../package.json";
 import { getLocaleID, getString, initLocale } from "./utils/locale";
+import { getEffectiveLanguage, t } from "./modules/i18n";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { getSettings, syncZoteroItemsAsDocument } from "./modules/sync";
 import { JoplinClient } from "./modules/joplinClient";
@@ -11,11 +12,13 @@ import {
   resolveDefaultTarget,
 } from "./modules/target";
 import { appendDebugLog } from "./utils/debugLog";
+import { logInfo, logWarn } from "./utils/logger";
 import { clearPref, getPref, setPref } from "./utils/prefs";
 import { createZToolkit } from "./utils/ztoolkit";
 
 const MENU_ID = `${config.addonRef}-itemmenu-sync-to-joplin`;
 const TOOLS_MENU_ID = `${config.addonRef}-toolsmenu`;
+const MENU_ICON = `chrome://${config.addonRef}/content/icons/menu.png`;
 let menuRegistered = false;
 
 async function onStartup(): Promise<void> {
@@ -67,7 +70,6 @@ async function onStartup(): Promise<void> {
 
     addon.data.initialized = true;
     await appendDebugLog("Plugin startup complete");
-
   } catch (error) {
     await appendDebugLog(
       `onStartup failed: ${
@@ -78,13 +80,9 @@ async function onStartup(): Promise<void> {
   }
 }
 
-async function onMainWindowLoad(
-  win: _ZoteroTypes.MainWindow,
-): Promise<void> {
+async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   try {
-    win.MozXULElement.insertFTLIfNeeded(
-      `${config.addonRef}-mainWindow.ftl`,
-    );
+    win.MozXULElement.insertFTLIfNeeded(`${config.addonRef}-mainWindow.ftl`);
   } catch (error) {
     await appendDebugLog(
       `insertFTLIfNeeded failed: ${
@@ -99,7 +97,14 @@ async function onMainWindowLoad(
     {
       menuType: "menuitem" as const,
       l10nID: getLocaleID("menuitem-export-content"),
-      icon: `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`,
+      icon: MENU_ICON,
+      darkIcon: MENU_ICON,
+      onShowing: (_event: Event, context: any) => {
+        const label = t(getEffectiveLanguage(), "menu.export");
+        context.menuElem?.setAttribute("label", label);
+        context.menuElem?.removeAttribute("data-l10n-id");
+        context.setIcon?.(MENU_ICON, MENU_ICON);
+      },
       onCommand: () => addon.hooks.onExportContent(),
     },
   ];
@@ -165,7 +170,7 @@ async function onExportContent(): Promise<void> {
   if (!selected.length) {
     new ztoolkit.ProgressWindow(config.addonName)
       .createLine({
-        text: "请先在 Zotero 中选择要导出的条目。",
+        text: t(getEffectiveLanguage(), "progress.selectItem"),
         type: "fail",
         progress: 100,
       })
@@ -174,10 +179,13 @@ async function onExportContent(): Promise<void> {
   }
 
   const settings = getSettings();
+  await logInfo(
+    `Export requested: selected=${selected.length} mode=${settings.exportLocationMode}`,
+  );
   if (!settings.joplinToken) {
     new ztoolkit.ProgressWindow(config.addonName)
       .createLine({
-        text: "尚未配置 Joplin Token。请打开 Zotero 设置 → Zotero to Joplin。",
+        text: t(settings.language, "error.noToken"),
         type: "fail",
         progress: 100,
       })
@@ -185,16 +193,14 @@ async function onExportContent(): Promise<void> {
     return;
   }
 
-  let target: { folderId: string; path: string } | null = null;
+  let target: { folderId: string; path: string } | null;
 
   try {
     if (settings.exportLocationMode === "ask") {
       target = await pickNotebook({
         settings,
-        title: "选择导出位置",
-        initialFolderId: String(
-          getPref("lastTargetFolderId") || "",
-        ),
+        title: t(settings.language, "picker.exportTitle"),
+        initialFolderId: String(getPref("lastTargetFolderId") || ""),
         initialPath: ROOT_NOTEBOOK,
         showEffectivePath: true,
       });
@@ -208,17 +214,16 @@ async function onExportContent(): Promise<void> {
     } else {
       const client = new JoplinClient(settings);
       await client.ping();
-      target = await ensureTarget(
-        client,
-        resolveDefaultTarget(settings),
-      );
+      target = await ensureTarget(client, resolveDefaultTarget(settings));
     }
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : String(error || "未知错误");
+      error instanceof Error
+        ? error.message
+        : String(error || t(settings.language, "error.unknown"));
     new ztoolkit.ProgressWindow(config.addonName)
       .createLine({
-        text: `无法确定导出位置：${message}`,
+        text: `${t(settings.language, "error.target")}${message}`,
         type: "fail",
         progress: 100,
       })
@@ -227,6 +232,7 @@ async function onExportContent(): Promise<void> {
   }
 
   if (!target) return;
+  await logInfo(`Export target: ${target.path}`);
   setPref("lastTargetFolderId", target.folderId);
 
   const progressWindow = new ztoolkit.ProgressWindow(config.addonName, {
@@ -234,7 +240,7 @@ async function onExportContent(): Promise<void> {
     closeTime: -1,
   })
     .createLine({
-      text: "准备导出到 Joplin...",
+      text: t(settings.language, "progress.preparing"),
       type: "default",
       progress: 0,
     })
@@ -249,11 +255,25 @@ async function onExportContent(): Promise<void> {
       },
     );
 
-    let text = `导出完成：新建 ${summary.created} 个笔记，更新 ${summary.updated} 个`;
-    if (summary.skipped) text += `，跳过 ${summary.skipped}`;
-    if (summary.failed) text += `，失败 ${summary.failed}`;
-    if (summary.errors.length) {
-      text += `\n${summary.errors.slice(0, 3).join("\n")}`;
+    let text = t(settings.language, "summary.done", {
+      created: summary.created,
+      updated: summary.updated,
+    });
+    if (summary.skipped) {
+      text += t(settings.language, "summary.skipped", {
+        skipped: summary.skipped,
+      });
+    }
+    if (summary.failed) {
+      text += t(settings.language, "summary.failed", {
+        failed: summary.failed,
+      });
+    }
+    const noticeCount = summary.errors.length + summary.warnings.length;
+    if (noticeCount) {
+      text += `\n${t(settings.language, "summary.seeLog", {
+        count: noticeCount,
+      })}`;
     }
 
     progressWindow.changeLine({
@@ -261,12 +281,18 @@ async function onExportContent(): Promise<void> {
       type: summary.failed ? "fail" : "success",
       progress: 100,
     });
-    progressWindow.startCloseTimer(summary.errors.length ? 12000 : 5000);
+    await logInfo(
+      `Export finished: created=${summary.created} updated=${summary.updated} skipped=${summary.skipped} failed=${summary.failed} notices=${noticeCount}`,
+    );
+    progressWindow.startCloseTimer(noticeCount ? 12000 : 5000);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : String(error || "未知错误");
+      error instanceof Error
+        ? error.message
+        : String(error || t(settings.language, "error.unknown"));
+    await logWarn(`Export failed: ${message}`);
     progressWindow.changeLine({
-      text: `导出失败：${message}`,
+      text: `${t(settings.language, "error.exportFailed")}${message}`,
       type: "fail",
       progress: 100,
     });

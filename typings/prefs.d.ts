@@ -7,6 +7,7 @@
 declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
+      "language": string;
       "joplinBaseUrl": string;
       "joplinToken": string;
       "notebookName": string;
@@ -16,6 +17,31 @@ declare namespace _ZoteroTypes {
       "includeImages": boolean;
       "includeAbstract": boolean;
       "includeTags": boolean;
+      "aiEnabled": boolean;
+      "aiProvider": string;
+      "aiApiBaseUrl": string;
+      "aiApiKey": string;
+      "aiModel": string;
+      "aiTemperature": string;
+      "aiMaxTokens": number;
+      "aiExtraHeaders": string;
+      "aiRequestTimeoutMs": number;
+      "aiMaxRetries": number;
+      "aiOutputLanguage": string;
+      "aiPdfSummaryEnabled": boolean;
+      "aiPdfSummaryPrompt": string;
+      "aiNotesSummaryEnabled": boolean;
+      "aiNotesSummaryPrompt": string;
+      "aiOrganizeEnabled": boolean;
+      "aiOrganizePrompt": string;
+      "aiOrganizeMode": string;
+      "aiChunkSizeChars": number;
+      "aiMaxPdfChars": number;
+      "aiMaxNotesChars": number;
+      "aiCacheEnabled": boolean;
+      "aiAnnotationContextEnabled": boolean;
+      "aiAnnotationContextChars": number;
+      "loggingEnabled": boolean;
     };
   }
 }

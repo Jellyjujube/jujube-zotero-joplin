@@ -105,7 +105,7 @@ function getCreators(item: Zotero.Item): CreatorInfo[] {
   return item.getCreators().map((creator: any) => {
     const firstName = String(creator.firstName || "");
     const lastName = String(creator.lastName || "");
-    let role = "";
+    let role: string;
     try {
       role = Zotero.CreatorTypes.getName(creator.creatorTypeID) || "";
     } catch {
@@ -121,7 +121,10 @@ function getCreators(item: Zotero.Item): CreatorInfo[] {
 
 function getTags(item: Zotero.Item): string[] {
   try {
-    return item.getTags().map((tag: any) => String(tag.tag || "")).filter(Boolean);
+    return item
+      .getTags()
+      .map((tag: any) => String(tag.tag || ""))
+      .filter(Boolean);
   } catch {
     return [];
   }
@@ -230,7 +233,9 @@ function normalizeAnnotation(
   annotation: Zotero.Item,
   json: any,
 ): AnnotationData {
-  const position = parsePosition(json?.position ?? (annotation as any).annotationPosition);
+  const position = parsePosition(
+    json?.position ?? (annotation as any).annotationPosition,
+  );
   const rawTags = json?.tags || (annotation as any).getTags?.() || [];
   const tags = rawTags
     .map((tag: any) =>
@@ -259,8 +264,10 @@ function normalizeAnnotation(
   };
 }
 
-async function getAnnotations(attachment: Zotero.Item): Promise<AnnotationData[]> {
-  let annotations: Zotero.Item[] = [];
+async function getAnnotations(
+  attachment: Zotero.Item,
+): Promise<AnnotationData[]> {
+  let annotations: Zotero.Item[];
   try {
     annotations = attachment.getAnnotations(false);
   } catch {
@@ -289,7 +296,7 @@ async function getAnnotations(attachment: Zotero.Item): Promise<AnnotationData[]
 
 async function getAttachments(item: Zotero.Item): Promise<AttachmentData[]> {
   const result: AttachmentData[] = [];
-  let ids: number[] = [];
+  let ids: number[];
   try {
     ids = item.getAttachments();
   } catch {
@@ -308,6 +315,7 @@ async function getAttachments(item: Zotero.Item): Promise<AttachmentData[]> {
 
     result.push({
       key: attachment.key,
+      itemID: attachment.id,
       title: String(
         (attachment as any).attachmentFilename ||
           (attachment as any).getDisplayTitle?.() ||
@@ -333,7 +341,7 @@ async function noteToMarkdown(note: Zotero.Item): Promise<string> {
   try {
     const translators = Zotero.Translators as any;
     const translatorID = translators?.TRANSLATOR_ID_NOTE_MARKDOWN;
-    const quickCopy = (Zotero.QuickCopy as any);
+    const quickCopy = Zotero.QuickCopy as any;
     if (translatorID && quickCopy?.getContentFromItems) {
       await Zotero.Translators.init();
       const translator = Zotero.Translators.get(translatorID);
@@ -347,7 +355,7 @@ async function noteToMarkdown(note: Zotero.Item): Promise<string> {
           () => reject(new Error("Note Markdown translator timed out")),
           15000,
         );
-        let accepted = false;
+        let accepted: boolean;
         try {
           accepted = quickCopy.getContentFromItems(
             [note],
@@ -394,7 +402,7 @@ async function noteToMarkdown(note: Zotero.Item): Promise<string> {
 
 async function getNotes(item: Zotero.Item): Promise<NoteData[]> {
   const result: NoteData[] = [];
-  let ids: number[] = [];
+  let ids: number[];
   try {
     ids = item.getNotes();
   } catch {
@@ -404,7 +412,7 @@ async function getNotes(item: Zotero.Item): Promise<NoteData[]> {
   for (const id of ids) {
     const note = getItem(id);
     if (!note || !note.isNote()) continue;
-    let title = "";
+    let title: string;
     try {
       title = String((note as any).getDisplayTitle?.() || "");
     } catch {

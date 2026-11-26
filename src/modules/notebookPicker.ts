@@ -1,4 +1,5 @@
 import { JoplinClient } from "./joplinClient";
+import { t } from "./i18n";
 import { ROOT_NOTEBOOK, normalizeFixedSegments } from "./target";
 import { PluginSettings } from "./types";
 
@@ -29,6 +30,7 @@ interface NotebookEntry {
 export async function pickNotebook(
   options: PickNotebookOptions,
 ): Promise<NotebookSelection | null> {
+  const language = options.settings.language;
   const client = new JoplinClient(options.settings);
   await client.ping();
   const listing = await client.listNotebooksUnderRoot(ROOT_NOTEBOOK);
@@ -75,6 +77,8 @@ export async function pickNotebook(
     const newId = `zotero-joplin-pick-new-${suffix}`;
     const effectiveId = `zotero-joplin-pick-effective-${suffix}`;
 
+    // The callbacks below are created before the dialog exists.
+    // eslint-disable-next-line prefer-const
     let dialog: any;
     let selectedId = initial?.id || "";
     const initialPathValue = preserveTypedPath
@@ -95,12 +99,11 @@ export async function pickNotebook(
         lastAction === "input" && typed
           ? normalizeFixedSegments(typed).join("/")
           : selected?.path || ROOT_NOTEBOOK;
-      element.textContent = `即将导入到：${effective}`;
+      element.textContent = `${t(language, "picker.exportingTo")}${effective}`;
     };
 
     const root =
-      notebooks.find((entry) => entry.path === ROOT_NOTEBOOK) ||
-      notebooks[0];
+      notebooks.find((entry) => entry.path === ROOT_NOTEBOOK) || notebooks[0];
 
     const byParent = new Map<string, NotebookEntry[]>();
     for (const entry of notebooks) {
@@ -158,9 +161,7 @@ export async function pickNotebook(
           cursor: "pointer",
           borderRadius: "4px",
           backgroundColor:
-            entry.id === selectedId
-              ? "rgba(0, 120, 215, 0.45)"
-              : "transparent",
+            entry.id === selectedId ? "rgba(0, 120, 215, 0.45)" : "transparent",
           whiteSpace: "pre",
           overflow: "hidden",
           fontFamily: "monospace",
@@ -218,69 +219,69 @@ export async function pickNotebook(
     }));
 
     const contentChildren: any[] = [
+      {
+        tag: "label",
+        namespace: "html",
+        properties: {
+          textContent: t(language, "picker.targetNotebook"),
+        },
+        styles: {
+          fontWeight: "bold",
+          marginBottom: "8px",
+          display: "block",
+        },
+      },
+      {
+        tag: "div",
+        namespace: "html",
+        id: listId,
+        styles: {
+          height: "18em",
+          overflowY: "auto",
+          overflowX: "auto",
+          border: "1px solid rgba(128, 128, 128, 0.45)",
+          borderRadius: "6px",
+          padding: "4px",
+          backgroundColor: "rgba(255, 255, 255, 0.04)",
+        },
+        children: rows.map((row) => row.element),
+      },
+      {
+        tag: "label",
+        namespace: "html",
+        properties: {
+          textContent: t(language, "picker.targetPath"),
+        },
+        styles: {
+          marginTop: "14px",
+          marginBottom: "6px",
+          display: "block",
+        },
+      },
+      {
+        tag: "input",
+        namespace: "html",
+        id: newId,
+        attributes: {
+          type: "text",
+          placeholder: "Zotero",
+          value: initialPathValue,
+        },
+        properties: { value: initialPathValue },
+        styles: { width: "36em", padding: "6px" },
+        listeners: [
           {
-            tag: "label",
-            namespace: "html",
-            properties: {
-              textContent: "目标笔记本",
-            },
-            styles: {
-              fontWeight: "bold",
-              marginBottom: "8px",
-              display: "block",
+            type: "input",
+            listener: (ev: Event) => {
+              newPathValue = String(
+                (ev.target as HTMLInputElement).value || "",
+              );
+              lastAction = "input";
+              updateEffectivePath();
             },
           },
-          {
-            tag: "div",
-            namespace: "html",
-            id: listId,
-            styles: {
-              height: "18em",
-              overflowY: "auto",
-              overflowX: "auto",
-              border: "1px solid rgba(128, 128, 128, 0.45)",
-              borderRadius: "6px",
-              padding: "4px",
-              backgroundColor: "rgba(255, 255, 255, 0.04)",
-            },
-            children: rows.map((row) => row.element),
-          },
-          {
-            tag: "label",
-            namespace: "html",
-            properties: {
-              textContent: "目标路径",
-            },
-            styles: {
-              marginTop: "14px",
-              marginBottom: "6px",
-              display: "block",
-            },
-          },
-          {
-            tag: "input",
-            namespace: "html",
-            id: newId,
-            attributes: {
-              type: "text",
-              placeholder: "Zotero",
-              value: initialPathValue,
-            },
-            properties: { value: initialPathValue },
-            styles: { width: "36em", padding: "6px" },
-            listeners: [
-              {
-                type: "input",
-                listener: (ev: Event) => {
-                  newPathValue = String(
-                    (ev.target as HTMLInputElement).value || "",
-                  );
-                  lastAction = "input";
-                  updateEffectivePath();
-                },
-              },
-            ],
-          },
+        ],
+      },
     ];
 
     if (showEffectivePath) {
@@ -289,7 +290,7 @@ export async function pickNotebook(
         namespace: "html",
         id: effectiveId,
         properties: {
-          textContent: `即将导入到：${initialPathValue}`,
+          textContent: `${t(language, "picker.exportingTo")}${initialPathValue}`,
         },
         styles: {
           color: "gray",
@@ -309,23 +310,17 @@ export async function pickNotebook(
     });
 
     dialog
-      .addButton("确定", "ok", {
+      .addButton(t(language, "button.ok"), "ok", {
         callback: () => {
           try {
             const doc = dialog?.window?.document;
-            const input = doc?.getElementById(
-              newId,
-            ) as HTMLInputElement | null;
-            const typedPath = String(
-              input?.value || newPathValue || "",
-            ).trim();
+            const input = doc?.getElementById(newId) as HTMLInputElement | null;
+            const typedPath = String(input?.value || newPathValue || "").trim();
 
             if (lastAction === "input" && typedPath) {
               const segments = normalizeFixedSegments(typedPath);
               const path = segments.join("/");
-              const existing = notebooks.find(
-                (entry) => entry.path === path,
-              );
+              const existing = notebooks.find((entry) => entry.path === path);
               finish({ folderId: existing?.id || "", path });
               return;
             }
@@ -340,20 +335,18 @@ export async function pickNotebook(
               finish(null);
             }
           } catch (error) {
-            Zotero.debug(
-              `[Zotero to Joplin] Notebook picker failed: ${error}`,
-            );
+            Zotero.debug(`[Zotero to Joplin] Notebook picker failed: ${error}`);
             finish(null);
           }
         },
       })
-      .addButton("取消", "cancel", {
+      .addButton(t(language, "button.cancel"), "cancel", {
         callback: () => finish(null),
       })
       .setDialogData({
         unloadCallback: () => finish(null),
       })
-      .open(options.title || "选择导出位置", {
+      .open(options.title || t(language, "picker.exportTitle"), {
         width: 640,
         height: showEffectivePath ? 500 : 460,
         centerscreen: true,

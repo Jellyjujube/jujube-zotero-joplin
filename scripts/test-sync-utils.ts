@@ -69,7 +69,9 @@ const pathCases: Array<[string, string]> = [
 for (const [input, expected] of pathCases) {
   const actual = normalizeFixedSegments(input).join("/");
   if (actual !== expected) {
-    throw new Error(`normalizeFixedSegments(${input}) = ${actual}, expected ${expected}`);
+    throw new Error(
+      `normalizeFixedSegments(${input}) = ${actual}, expected ${expected}`,
+    );
   }
 }
 if (ROOT_NOTEBOOK !== "Zotero") throw new Error("root notebook mismatch");

@@ -1,6 +1,7 @@
 import http from "node:http";
 import { JoplinClient } from "../src/modules/joplinClient";
 import { PluginSettings } from "../src/modules/types";
+import { createDefaultAiSettings } from "../src/modules/aiConfig";
 
 const notes = new Map<string, any>();
 const folders = new Map<string, any>();
@@ -13,7 +14,7 @@ const server = http.createServer(async (req, res) => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf8");
-  let body: any = null;
+  let body: any;
   try {
     body = raw ? JSON.parse(raw) : null;
   } catch {
@@ -30,7 +31,8 @@ const server = http.createServer(async (req, res) => {
     }
   };
 
-  if (url.pathname === "/ping") return send(200, undefined, "JoplinClipperServer");
+  if (url.pathname === "/ping")
+    return send(200, undefined, "JoplinClipperServer");
   if (url.pathname === "/search") {
     const type = url.searchParams.get("type");
     const items =
@@ -148,7 +150,9 @@ const server = http.createServer(async (req, res) => {
   return send(404, { error: "unknown" });
 });
 
-await new Promise<void>((resolve) => server.listen(41185, "127.0.0.1", resolve));
+await new Promise<void>((resolve) =>
+  server.listen(41185, "127.0.0.1", resolve),
+);
 
 (globalThis as any).Zotero = {
   HTTP: {
@@ -159,7 +163,7 @@ await new Promise<void>((resolve) => server.listen(41185, "127.0.0.1", resolve))
         body: options?.body,
       });
       const text = await response.text();
-      let data: any = null;
+      let data: any;
       try {
         data = JSON.parse(text);
       } catch {
@@ -179,6 +183,8 @@ const settings: PluginSettings = {
   includeImages: true,
   includeAbstract: false,
   includeTags: true,
+  language: "zh-CN",
+  ai: createDefaultAiSettings(),
 };
 
 const client = new JoplinClient(settings);
@@ -244,7 +250,8 @@ const created = await client.createNote({
   body: "Body",
   parent_id: notebookId,
 });
-if (created.id !== "0123456789abcdef0123456789abcdef") throw new Error("create failed");
+if (created.id !== "0123456789abcdef0123456789abcdef")
+  throw new Error("create failed");
 
 const fetched = await client.getNote(created.id);
 if (!fetched || fetched.title !== "Title") throw new Error("get failed");

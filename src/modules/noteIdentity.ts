@@ -75,9 +75,7 @@ export function parseUserDataTags(value: string): string[] {
     const tags = parsed?.["zotero-joplin"]?.tags;
     if (Array.isArray(tags)) {
       return [
-        ...new Set(
-          tags.map((tag) => String(tag || "").trim()).filter(Boolean),
-        ),
+        ...new Set(tags.map((tag) => String(tag || "").trim()).filter(Boolean)),
       ];
     }
   } catch {

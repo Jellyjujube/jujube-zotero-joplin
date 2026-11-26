@@ -1,5 +1,40 @@
 export type ExportLocationMode = "ask" | "default";
 export type DefaultLocationSource = "fixed" | "collections";
+export type Language = "zh-CN" | "en-US";
+export type LanguagePreference = "auto" | Language;
+
+export type AiProvider = "openai" | "ollama" | "lmstudio" | "custom";
+export type AiOrganizeMode = "keep" | "only";
+export type AiOutputLanguage = "ui" | "zh-CN" | "en-US";
+export type AiFeatureId = "pdf-summary" | "notes-summary" | "notes-organize";
+
+export interface AiSettings {
+  enabled: boolean;
+  provider: AiProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  extraHeaders: string;
+  extraHeadersError?: string;
+  timeoutMs: number;
+  maxRetries: number;
+  outputLanguage: AiOutputLanguage;
+  pdfSummaryEnabled: boolean;
+  pdfSummaryPrompt: string;
+  notesSummaryEnabled: boolean;
+  notesSummaryPrompt: string;
+  organizeEnabled: boolean;
+  organizePrompt: string;
+  organizeMode: AiOrganizeMode;
+  chunkSizeChars: number;
+  maxPdfChars: number;
+  maxNotesChars: number;
+  annotationContextEnabled: boolean;
+  annotationContextChars: number;
+  cacheEnabled: boolean;
+}
 
 export interface PluginSettings {
   joplinBaseUrl: string;
@@ -10,6 +45,8 @@ export interface PluginSettings {
   includeImages: boolean;
   includeAbstract: boolean;
   includeTags: boolean;
+  language: Language;
+  ai: AiSettings;
 }
 
 export type ExportMode = "all" | "notes" | "annotations";
@@ -36,13 +73,27 @@ export interface AnnotationData {
   imageDataUri?: string;
 }
 
+export type AttachmentTextSource =
+  "attachment-text" | "fulltext-cache" | "unavailable";
+
+export interface AttachmentFullText {
+  text: string;
+  pages?: string[];
+  source: AttachmentTextSource;
+  charCount: number;
+  truncated: boolean;
+  error?: string;
+}
+
 export interface AttachmentData {
   key: string;
+  itemID?: number;
   title: string;
   contentType: string;
   filename: string;
   uri: string;
   annotations: AnnotationData[];
+  fullText?: AttachmentFullText;
 }
 
 export interface NoteData {
@@ -83,4 +134,5 @@ export interface SyncSummary {
   skipped: number;
   failed: number;
   errors: string[];
+  warnings: string[];
 }

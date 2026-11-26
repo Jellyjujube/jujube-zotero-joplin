@@ -5,6 +5,7 @@ import {
   formatNotesNote,
 } from "../src/modules/formatter";
 import { ItemData, PluginSettings } from "../src/modules/types";
+import { createDefaultAiSettings } from "../src/modules/aiConfig";
 
 const settings: PluginSettings = {
   joplinBaseUrl: "http://127.0.0.1:41184",
@@ -15,6 +16,8 @@ const settings: PluginSettings = {
   includeImages: true,
   includeAbstract: true,
   includeTags: true,
+  language: "zh-CN",
+  ai: createDefaultAiSettings(),
 };
 
 const data: ItemData = {
@@ -25,8 +28,18 @@ const data: ItemData = {
   libraryType: "user",
   title: "A Sample Paper: Testing [brackets]",
   creators: [
-    { firstName: "Ada", lastName: "Lovelace", name: "Ada Lovelace", role: "author" },
-    { firstName: "Alan", lastName: "Turing", name: "Alan Turing", role: "author" },
+    {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      name: "Ada Lovelace",
+      role: "author",
+    },
+    {
+      firstName: "Alan",
+      lastName: "Turing",
+      name: "Alan Turing",
+      role: "author",
+    },
   ],
   date: "2026-05-01",
   year: "2026",
@@ -99,6 +112,7 @@ const literature = formatLiteratureNote(data, settings, {
 const notes = formatNotesNote(data);
 const annotations = formatAnnotationsNote(data, settings);
 const preview = formatDocumentNote(data, settings);
+const english = formatDocumentNote(data, { ...settings, language: "en-US" });
 
 console.log("===== literature =====");
 console.log(literature);
@@ -109,7 +123,10 @@ console.log(annotations);
 
 const checks: Array<[string, boolean]> = [
   ["literature kind", literature.includes("kind=literature")],
-  ["literature item link", literature.includes("zotero://select/library/items/ITEMKEY1")],
+  [
+    "literature item link",
+    literature.includes("zotero://select/library/items/ITEMKEY1"),
+  ],
   ["literature notes link", literature.includes(":/notesnoteid")],
   ["literature annotations link", literature.includes(":/annotationsnoteid")],
   ["literature no annotation content", !literature.includes("annotation=ANN")],
@@ -123,24 +140,58 @@ const checks: Array<[string, boolean]> = [
   ["note h2-only not h5", !notes.includes("##### Only section")],
   ["document note h1 nested", preview.includes("#### Reading idea")],
   ["document note h1 not sibling", !preview.includes("\n### Reading idea")],
-  ["note heading link", notes.includes("### [My reading note](zotero://select/library/items/NOTEKEY1)")],
+  [
+    "note heading link",
+    notes.includes(
+      "### [My reading note](zotero://select/library/items/NOTEKEY1)",
+    ),
+  ],
   ["no redundant note link", !notes.includes("在 Zotero 中打开这条笔记")],
   ["notes no annotation", !notes.includes("annotation=ANN")],
   ["annotations kind", annotations.includes("kind=annotations")],
   ["annotation link", annotations.includes("annotation=ANN00001")],
   ["annotation page", annotations.includes("p. 5")],
-  ["attachment heading link", annotations.includes("### [paper.pdf](zotero://open-pdf/library/items/ATTACH01)")],
-  ["annotation heading link", annotations.includes("**[高亮 · 黄色](zotero://open-pdf/library/items/ATTACH01?page=5&annotation=ANN00001)**")],
-  ["image heading uses 区域", annotations.includes("**[区域 · 蓝色](zotero://open-pdf/library/items/ATTACH01?page=7&annotation=ANN00002)**")],
+  [
+    "attachment heading link",
+    annotations.includes(
+      "### [paper.pdf](zotero://open-pdf/library/items/ATTACH01)",
+    ),
+  ],
+  [
+    "annotation heading link",
+    annotations.includes(
+      "**[高亮 · 黄色](zotero://open-pdf/library/items/ATTACH01?page=5&annotation=ANN00001)**",
+    ),
+  ],
+  [
+    "image heading uses 区域",
+    annotations.includes(
+      "**[区域 · 蓝色](zotero://open-pdf/library/items/ATTACH01?page=7&annotation=ANN00002)**",
+    ),
+  ],
   ["page group p5", annotations.includes("#### p. 5")],
   ["page group p7", annotations.includes("#### p. 7")],
   ["no annotation label headings", !annotations.includes("#### [")],
   ["no redundant PDF link", !annotations.includes("[打开 PDF]")],
   ["no redundant annotation link", !annotations.includes("[定位到注释]")],
-  ["annotation image placeholder", annotations.includes("{{ZOTERO_JOPLIN_IMAGE:ANN00002}}")],
+  [
+    "annotation image placeholder",
+    annotations.includes("{{ZOTERO_JOPLIN_IMAGE:ANN00002}}"),
+  ],
   ["annotations no note content", !annotations.includes("managed regions")],
-  ["preview has everything", preview.includes("managed regions") && preview.includes("annotation=ANN00001")],
+  [
+    "preview has everything",
+    preview.includes("managed regions") &&
+      preview.includes("annotation=ANN00001"),
+  ],
   ["managed end", preview.includes("<!-- zotero-joplin:end -->")],
+  ["english notes heading", english.includes("## Zotero Notes")],
+  ["english annotations heading", english.includes("## PDF Annotations")],
+  ["english abstract", english.includes("## Abstract")],
+  ["english metadata label", english.includes("**Authors**")],
+  ["english annotation label", english.includes("**[Highlight · Yellow](")],
+  ["english open link", english.includes("[Open in Zotero]")],
+  ["english tags", english.includes("Tags: `method`")],
 ];
 for (const [name, ok] of checks) {
   console.log(`${ok ? "OK" : "FAIL"}: ${name}`);

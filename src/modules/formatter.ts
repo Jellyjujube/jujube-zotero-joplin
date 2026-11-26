@@ -1,34 +1,42 @@
+import { t, type MessageKey } from "./i18n";
+import { annotationUrl } from "./links";
+import { wrapAiSection } from "./aiSections";
+import { AiResult, AiSectionSummary } from "./aiTypes";
 import {
   AnnotationData,
   AttachmentData,
   CreatorInfo,
   ItemData,
+  Language,
   NoteKind,
   PluginSettings,
 } from "./types";
 
-const COLOR_NAMES: Record<string, string> = {
-  "#ffd400": "黄色",
-  "#ff6666": "红色",
-  "#5fb236": "绿色",
-  "#2ea8e5": "蓝色",
-  "#a28ae5": "紫色",
-  "#e56eee": "品红",
-  "#f19837": "橙色",
-  "#aaaaaa": "灰色",
+const COLOR_KEYS: Record<string, MessageKey> = {
+  "#ffd400": "color.yellow",
+  "#ff6666": "color.red",
+  "#5fb236": "color.green",
+  "#2ea8e5": "color.blue",
+  "#a28ae5": "color.purple",
+  "#e56eee": "color.magenta",
+  "#f19837": "color.orange",
+  "#aaaaaa": "color.gray",
 };
 
-const TYPE_NAMES: Record<string, string> = {
-  highlight: "高亮",
-  underline: "下划线",
-  note: "笔记注释",
-  text: "文字",
-  image: "区域",
-  ink: "绘图",
+const TYPE_KEYS: Record<string, MessageKey> = {
+  highlight: "ann.highlight",
+  underline: "ann.underline",
+  note: "ann.note",
+  text: "ann.text",
+  image: "ann.image",
+  ink: "ann.ink",
 };
 
 function escapeLinkText(text: string): string {
-  return String(text || "").replace(/[\[\]]/g, "\\$&").replace(/\r?\n/g, " ");
+  return String(text || "")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\r?\n/g, " ");
 }
 
 function formatAuthors(creators: CreatorInfo[]): string {
@@ -40,12 +48,14 @@ function formatAuthors(creators: CreatorInfo[]): string {
     .join("; ");
 }
 
-function colorName(color: string): string {
-  return COLOR_NAMES[String(color || "").toLowerCase()] || String(color || "");
+function colorName(color: string, language: Language): string {
+  const key = COLOR_KEYS[String(color || "").toLowerCase()];
+  return key ? t(language, key) : String(color || "");
 }
 
-function typeName(type: string): string {
-  return TYPE_NAMES[String(type || "").toLowerCase()] || String(type || "");
+function typeName(type: string, language: Language): string {
+  const key = TYPE_KEYS[String(type || "").toLowerCase()];
+  return key ? t(language, key) : String(type || "");
 }
 
 function quote(text: string): string {
@@ -114,7 +124,10 @@ function scanMarkdownHeadings(lines: string[]): MarkdownHeading[] {
  * `startLevel`; deeper headings keep their relative order. Headings inside
  * fenced code blocks are left untouched.
  */
-function nestNoteHeadings(markdown: string, startLevel = NOTE_CONTENT_HEADING_LEVEL): string {
+function nestNoteHeadings(
+  markdown: string,
+  startLevel = NOTE_CONTENT_HEADING_LEVEL,
+): string {
   const source = String(markdown || "");
   const lines = source.split(/\r?\n/);
   const headings = scanMarkdownHeadings(lines);
@@ -137,24 +150,20 @@ function nestNoteHeadings(markdown: string, startLevel = NOTE_CONTENT_HEADING_LE
   return lines.join("\n");
 }
 
-function annotationLink(
-  attachment: AttachmentData,
-  annotation: AnnotationData,
-): string {
-  const page = annotation.pageIndex >= 0 ? annotation.pageIndex + 1 : 1;
-  return `${attachment.uri}?page=${page}&annotation=${annotation.key}`;
-}
-
 function renderAnnotation(
   attachment: AttachmentData,
   annotation: AnnotationData,
   settings: PluginSettings,
 ): string[] {
+  const language = settings.language;
   const lines: string[] = [];
-  const parts = [typeName(annotation.type), colorName(annotation.color)]
+  const parts = [
+    typeName(annotation.type, language),
+    colorName(annotation.color, language),
+  ]
     .filter(Boolean)
     .join(" · ");
-  const link = annotationLink(attachment, annotation);
+  const link = annotationUrl(attachment, annotation);
 
   lines.push(`**[${parts}](${link})**`);
   lines.push("");
@@ -162,7 +171,7 @@ function renderAnnotation(
   if (annotation.type === "image" || annotation.type === "ink") {
     if (annotation.imageDataUri && settings.includeImages) {
       lines.push(
-        `![Zotero 注释图片]({{ZOTERO_JOPLIN_IMAGE:${annotation.key}}})`,
+        `![${t(language, "doc.imageAlt")}]({{ZOTERO_JOPLIN_IMAGE:${annotation.key}}})`,
       );
     }
   } else if (annotation.text) {
@@ -177,7 +186,9 @@ function renderAnnotation(
   if (annotation.tags.length) {
     lines.push("");
     lines.push(
-      `标签: ${annotation.tags.map((tag) => inlineCode(tag)).join(", ")}`,
+      `${t(language, "doc.tagsInline")}: ${annotation.tags
+        .map((tag) => inlineCode(tag))
+        .join(", ")}`,
     );
   }
 
@@ -185,10 +196,13 @@ function renderAnnotation(
   return lines;
 }
 
-function annotationPageLabel(annotation: AnnotationData): string {
+function annotationPageLabel(
+  annotation: AnnotationData,
+  language: Language,
+): string {
   if (annotation.pageLabel) return `p. ${annotation.pageLabel}`;
   if (annotation.pageIndex >= 0) return `p. ${annotation.pageIndex + 1}`;
-  return "未知页";
+  return t(language, "doc.unknownPage");
 }
 
 function annotationPageKey(annotation: AnnotationData): string {
@@ -202,8 +216,9 @@ function renderAttachment(
   settings: PluginSettings,
 ): string[] {
   if (!attachment.annotations.length) return [];
+  const language = settings.language;
   const lines: string[] = [];
-  const title = attachment.title || "PDF";
+  const title = attachment.title || t(language, "doc.pdfFallback");
   lines.push(`### [${escapeLinkText(title)}](${attachment.uri})`);
   lines.push("");
 
@@ -212,7 +227,7 @@ function renderAttachment(
     const pageKey = annotationPageKey(annotation);
     if (pageKey !== currentPage) {
       if (currentPage) lines.push("");
-      lines.push(`#### ${annotationPageLabel(annotation)}`);
+      lines.push(`#### ${annotationPageLabel(annotation, language)}`);
       lines.push("");
       currentPage = pageKey;
     }
@@ -221,41 +236,54 @@ function renderAttachment(
   return lines;
 }
 
-function renderItemHeader(data: ItemData): string[] {
-  return [`# ${data.title || "Untitled"}`, ""];
+function renderItemHeader(data: ItemData, language: Language): string[] {
+  return [`# ${data.title || t(language, "doc.untitled")}`, ""];
 }
 
-function renderMetadata(
-  data: ItemData,
-  settings: PluginSettings,
-): string[] {
+function renderMetadata(data: ItemData, settings: PluginSettings): string[] {
+  const language = settings.language;
   const lines: string[] = [];
   const authors = formatAuthors(data.creators);
   const meta: Array<[string, string]> = [];
-  if (authors) meta.push(["作者", authors]);
-  if (data.year) meta.push(["年份", data.year]);
-  if (data.itemType) meta.push(["类型", data.itemType]);
-  if (data.publicationTitle) meta.push(["期刊/出版物", data.publicationTitle]);
+  if (authors) meta.push([t(language, "doc.authors"), authors]);
+  if (data.year) meta.push([t(language, "doc.year"), data.year]);
+  if (data.itemType) meta.push([t(language, "doc.type"), data.itemType]);
+  if (data.publicationTitle) {
+    meta.push([t(language, "doc.publication"), data.publicationTitle]);
+  }
   if (
     data.journalAbbreviation &&
     data.journalAbbreviation !== data.publicationTitle
   ) {
-    meta.push(["期刊缩写", data.journalAbbreviation]);
+    meta.push([t(language, "doc.journalAbbrev"), data.journalAbbreviation]);
   }
   if (data.DOI) {
     meta.push([
-      "DOI",
+      t(language, "doc.doi"),
       `[${escapeLinkText(data.DOI)}](https://doi.org/${encodeURI(data.DOI)})`,
     ]);
   }
-  if (data.citekey) meta.push(["Citekey", inlineCode(data.citekey)]);
-  if (data.url) meta.push(["URL", `[${escapeLinkText(data.url)}](${data.url})`]);
-  meta.push(["Zotero", `[在 Zotero 中打开](${data.itemURI})`]);
+  if (data.citekey) {
+    meta.push([t(language, "doc.citekey"), inlineCode(data.citekey)]);
+  }
+  if (data.url) {
+    meta.push([
+      t(language, "doc.url"),
+      `[${escapeLinkText(data.url)}](${data.url})`,
+    ]);
+  }
+  meta.push([
+    t(language, "doc.zotero"),
+    `[${t(language, "doc.openInZotero")}](${data.itemURI})`,
+  ]);
   if (settings.includeTags && data.tags.length) {
-    meta.push(["标签", data.tags.map((tag) => inlineCode(tag)).join(", ")]);
+    meta.push([
+      t(language, "doc.tags"),
+      data.tags.map((tag) => inlineCode(tag)).join(", "),
+    ]);
   }
   if (data.collections.length) {
-    meta.push(["集合", data.collections.join(" / ")]);
+    meta.push([t(language, "doc.collections"), data.collections.join(" / ")]);
   }
 
   for (const [label, value] of meta) {
@@ -264,7 +292,7 @@ function renderMetadata(
   lines.push("");
 
   if (settings.includeAbstract && data.abstractNote) {
-    lines.push("## 摘要");
+    lines.push(`## ${t(language, "doc.abstract")}`);
     lines.push("");
     lines.push(data.abstractNote.trim());
     lines.push("");
@@ -272,14 +300,18 @@ function renderMetadata(
   return lines;
 }
 
-function renderNotesSection(data: ItemData): string[] {
+function renderNotesSection(data: ItemData, language: Language): string[] {
   if (!data.notes.length) return [];
-  const lines: string[] = ["## Zotero 笔记", ""];
+  const lines: string[] = [`## ${t(language, "doc.notes")}`, ""];
 
   for (const note of data.notes) {
     const markdown = nestNoteHeadings(note.markdown);
     if (!markdown) continue;
-    lines.push(`### [${escapeLinkText(note.title || "笔记")}](${note.uri})`);
+    lines.push(
+      `### [${escapeLinkText(
+        note.title || t(language, "doc.noteFallback"),
+      )}](${note.uri})`,
+    );
     lines.push("");
     lines.push(markdown);
     lines.push("");
@@ -297,7 +329,7 @@ function renderAnnotationsSection(
     .filter((section) => section.length);
   if (!sections.length) return [];
 
-  const lines: string[] = ["## PDF 注释", ""];
+  const lines: string[] = [`## ${t(settings.language, "doc.annotations")}`, ""];
   for (const section of sections) {
     lines.push(...section);
   }
@@ -328,30 +360,45 @@ export function formatLiteratureNote(
   settings: PluginSettings,
   links: LiteratureLinks = {},
 ): string {
-  const body = [...renderItemHeader(data), ...renderMetadata(data, settings)];
+  const language = settings.language;
+  const body = [
+    ...renderItemHeader(data, language),
+    ...renderMetadata(data, settings),
+  ];
 
   const linkLines: string[] = [];
   if (links.notesNoteId) {
-    linkLines.push(`- **笔记**: [打开笔记](:/${links.notesNoteId})`);
+    linkLines.push(
+      `- **${t(language, "doc.notesLink")}**: [${t(
+        language,
+        "doc.openNotes",
+      )}](:/${links.notesNoteId})`,
+    );
   }
   if (links.annotationsNoteId) {
     linkLines.push(
-      `- **注释**: [打开注释](:/${links.annotationsNoteId})`,
+      `- **${t(language, "doc.annotationsLink")}**: [${t(
+        language,
+        "doc.openAnnotations",
+      )}](:/${links.annotationsNoteId})`,
     );
   }
   if (linkLines.length) {
-    body.push("## 相关笔记", "", ...linkLines, "");
+    body.push(`## ${t(language, "doc.related")}`, "", ...linkLines, "");
   }
 
   return wrapManaged("literature", data, body);
 }
 
-export function formatNotesNote(data: ItemData): string {
-  const section = renderNotesSection(data);
+export function formatNotesNote(
+  data: ItemData,
+  language: Language = "zh-CN",
+): string {
+  const section = renderNotesSection(data, language);
   if (!section.length) return "";
   const body = [
-    ...renderItemHeader(data),
-    `[在 Zotero 中打开](${data.itemURI})`,
+    ...renderItemHeader(data, language),
+    `[${t(language, "doc.openInZotero")}](${data.itemURI})`,
     "",
     ...section,
   ];
@@ -365,24 +412,79 @@ export function formatAnnotationsNote(
   const section = renderAnnotationsSection(data, settings);
   if (!section.length) return "";
   const body = [
-    ...renderItemHeader(data),
-    `[在 Zotero 中打开](${data.itemURI})`,
+    ...renderItemHeader(data, settings.language),
+    `[${t(settings.language, "doc.openInZotero")}](${data.itemURI})`,
     "",
     ...section,
   ];
   return wrapManaged("annotations", data, body);
 }
 
+function renderAiSection(
+  section: AiSectionSummary | undefined,
+  headingKey:
+    "ai.headingPdfSummary" | "ai.headingNotesSummary" | "ai.headingOrganize",
+  settings: PluginSettings,
+): string[] {
+  if (!section?.markdown) return [];
+  const language = settings.language;
+  const lines: string[] = [`## ${t(language, headingKey)}`, ""];
+  if (section.degraded) {
+    lines.push(`> ${t(language, "ai.staleWarning")}`, "");
+  }
+  lines.push(
+    ...wrapAiSection(section.feature, section.hash, section.markdown).split(
+      "\n",
+    ),
+  );
+  lines.push("");
+  return lines;
+}
+
+function renderAiSections(
+  ai: AiResult | undefined,
+  settings: PluginSettings,
+): string[] {
+  if (!ai) return [];
+  const sections = [
+    ...renderAiSection(ai.pdfSummary, "ai.headingPdfSummary", settings),
+    ...renderAiSection(ai.notesSummary, "ai.headingNotesSummary", settings),
+    ...renderAiSection(ai.organized, "ai.headingOrganize", settings),
+  ];
+  if (!sections.length) return [];
+  sections.push(`_${t(settings.language, "ai.disclaimer")}_`, "");
+  return sections;
+}
+
 function renderCombinedBody(
   data: ItemData,
   settings: PluginSettings,
+  ai?: AiResult,
 ): string[] {
-  return [
-    ...renderItemHeader(data),
+  const organizeOnly =
+    Boolean(ai?.organized?.markdown) &&
+    !ai?.organized?.degraded &&
+    settings.ai.organizeMode === "only";
+  const lines = [
+    ...renderItemHeader(data, settings.language),
     ...renderMetadata(data, settings),
-    ...renderNotesSection(data),
-    ...renderAnnotationsSection(data, settings),
+    ...renderAiSections(ai, settings),
   ];
+  if (!organizeOnly) {
+    lines.push(
+      ...renderNotesSection(data, settings.language),
+      ...renderAnnotationsSection(data, settings),
+    );
+  } else {
+    lines.push(
+      `> ${t(settings.language, "ai.originalNotExported")} [${t(
+        settings.language,
+        "ai.openOriginal",
+      )}](${data.itemURI})`,
+      "",
+    );
+  }
+  return lines;
 }
 
 /**
@@ -392,8 +494,9 @@ function renderCombinedBody(
 export function formatDocumentNote(
   data: ItemData,
   settings: PluginSettings,
+  ai?: AiResult,
 ): string {
-  return wrapManaged("document", data, renderCombinedBody(data, settings));
+  return wrapManaged("document", data, renderCombinedBody(data, settings, ai));
 }
 
 export function hasNotes(data: ItemData): boolean {

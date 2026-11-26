@@ -154,10 +154,7 @@ export class JoplinClient {
     this.token = String(settings.joplinToken || "").trim();
   }
 
-  private buildUrl(
-    path: string,
-    query?: RequestOptions["query"],
-  ): string {
+  private buildUrl(path: string, query?: RequestOptions["query"]): string {
     const url = new URL(path.replace(/^\/+/, ""), `${this.baseUrl}/`);
     if (this.token) {
       url.searchParams.set("token", this.token);
@@ -233,8 +230,7 @@ export class JoplinClient {
   async getNote(noteId: string): Promise<any | null> {
     const result = await this.request("GET", `/notes/${noteId}`, {
       query: {
-        fields:
-          "id,title,body,parent_id,updated_time,deleted_time,is_conflict",
+        fields: "id,title,body,parent_id,updated_time,deleted_time,is_conflict",
       },
       allow404: true,
     });
@@ -347,8 +343,7 @@ export class JoplinClient {
     try {
       const records = await this.getFolderRecords();
       const match = records.find(
-        (record) =>
-          record.title === trimmed && record.parent_id === wantParent,
+        (record) => record.title === trimmed && record.parent_id === wantParent,
       );
       if (match) {
         return {
@@ -374,8 +369,7 @@ export class JoplinClient {
     return (
       items.find(
         (item) =>
-          item.title === trimmed &&
-          String(item.parent_id || "") === wantParent,
+          item.title === trimmed && String(item.parent_id || "") === wantParent,
       ) || null
     );
   }
@@ -439,9 +433,7 @@ export class JoplinClient {
         const id = String(node.id);
         if (stack.has(id)) return String(node.title || "");
         stack.add(id);
-        const parent = node.parent_id
-          ? byId.get(String(node.parent_id))
-          : null;
+        const parent = node.parent_id ? byId.get(String(node.parent_id)) : null;
         return parent
           ? `${pathOf(parent, stack)}/${String(node.title || "")}`
           : String(node.title || "");
@@ -546,9 +538,7 @@ export class JoplinClient {
     return records;
   }
 
-  private async getCollectionFolderIndex(): Promise<
-    Map<string, FolderRecord>
-  > {
+  private async getCollectionFolderIndex(): Promise<Map<string, FolderRecord>> {
     if (this.collectionFolderIndex) return this.collectionFolderIndex;
 
     const index = new Map<string, FolderRecord>();
@@ -684,9 +674,7 @@ export class JoplinClient {
     return parentId;
   }
 
-  async ensureNotebookPath(
-    path: string,
-  ): Promise<string | undefined> {
+  async ensureNotebookPath(path: string): Promise<string | undefined> {
     const segments = String(path || "")
       .split("/")
       .map((segment) => segment.trim())
@@ -800,11 +788,9 @@ export class JoplinClient {
 
   async removeTagFromNote(tagId: string, noteId: string): Promise<void> {
     try {
-      await this.request(
-        "DELETE",
-        `/tags/${tagId}/notes/${noteId}`,
-        { responseType: "text" },
-      );
+      await this.request("DELETE", `/tags/${tagId}/notes/${noteId}`, {
+        responseType: "text",
+      });
     } catch {
       // Tag removal is non-critical; leave the old tag if the API rejects it.
     }
@@ -815,13 +801,7 @@ export class JoplinClient {
     const boundary = `----ZoteroJoplin${Date.now().toString(
       16,
     )}${Math.random().toString(16).slice(2)}`;
-    const body = buildMultipartBody(
-      boundary,
-      { title },
-      title,
-      mime,
-      bytes,
-    );
+    const body = buildMultipartBody(boundary, { title }, title, mime, bytes);
     const url = this.buildUrl("/resources");
 
     const xhr = await Zotero.HTTP.request("POST", url, {
